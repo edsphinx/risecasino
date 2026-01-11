@@ -129,7 +129,7 @@ contract VyreJackCoreEventsTest is Test {
         casino = new MockCasinoWithSettlePayout();
 
         // Deploy game
-        game = new VyreJackCore(address(casino), address(vrf));
+        game = new VyreJackCore(address(vrf), address(casino));
         vrf.setGame(address(game));
         casino.setGame(address(game));
 

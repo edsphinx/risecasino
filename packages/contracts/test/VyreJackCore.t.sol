@@ -73,6 +73,11 @@ contract MockVRFManual is IVRFCoordinator {
 contract MockCasino {
     VyreJackCore public game;
 
+    // Track settlePayouts for testing
+    uint256 public lastSettleAmount;
+    address public lastSettlePlayer;
+    address public lastSettleToken;
+
     function setGame(
         address _game
     ) external {
@@ -87,6 +92,16 @@ contract MockCasino {
         IVyreGame.BetInfo memory bet =
             IVyreGame.BetInfo({ token: token, amount: amount, chipTier: 0 });
         return game.play(player, bet, "");
+    }
+
+    function settlePayout(
+        address player,
+        address token,
+        uint256 amount
+    ) external {
+        lastSettlePlayer = player;
+        lastSettleToken = token;
+        lastSettleAmount = amount;
     }
 }
 
@@ -624,5 +639,169 @@ contract VyreJackCoreInvariantTest is Test {
         uint256 maxBet = game.defaultMaxBet();
         assertTrue(maxBet >= minBet, "Max bet must be >= min bet");
     }
+
+    /**
+     * @notice Invariant: VRF_TIMEOUT is always 2 minutes
+     */
+    function invariant_vrfTimeoutIs2Minutes() public view {
+        assertEq(game.VRF_TIMEOUT(), 2 minutes, "VRF timeout must be 2 minutes");
+    }
 }
 
+/**
+ * @title VyreJackCoreV5FeaturesTest
+ * @notice Tests for new V5 features: getGameStatus(), canRetryVRF(), VRFRequestPending
+ */
+contract VyreJackCoreV5FeaturesTest is Test {
+    VyreJackCore public game;
+    MockVRFManual public vrf;
+    MockCasino public casino;
+
+    address public chipToken = address(0xC41);
+    address public player1 = address(0x1);
+
+    function setUp() public {
+        vrf = new MockVRFManual();
+        casino = new MockCasino();
+        game = new VyreJackCore(address(vrf), address(casino));
+        vrf.setGame(address(game));
+        casino.setGame(address(game));
+
+        game.setBetLimits(chipToken, 1e18, 1000e18);
+    }
+
+    // ==================== VRF_TIMEOUT TESTS ====================
+
+    function test_VRFTimeout_Is2Minutes() public view {
+        assertEq(game.VRF_TIMEOUT(), 2 minutes);
+        assertEq(game.VRF_TIMEOUT(), 120);
+    }
+
+    // ==================== getGameStatus TESTS ====================
+
+    function test_GetGameStatus_NoActiveGame() public view {
+        (
+            VyreJackCore.GameState state,
+            uint256 bet,
+            address token,
+            uint8[] memory playerCards,
+            uint8 playerValue,
+            bool playerIsSoft,
+            uint8 dealerVisibleCard,
+            bool canRetry,
+            uint256 vrfTimeoutAt,
+            bool isDoubled
+        ) = game.getGameStatus(player1);
+
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.Idle));
+        assertEq(bet, 0);
+        assertEq(token, address(0));
+        assertEq(playerCards.length, 0);
+        assertEq(playerValue, 0);
+        assertFalse(playerIsSoft);
+        assertEq(dealerVisibleCard, 0);
+        assertFalse(canRetry);
+        assertEq(vrfTimeoutAt, 0);
+        assertFalse(isDoubled);
+    }
+
+    function test_GetGameStatus_WaitingForDeal() public {
+        // Start game
+        casino.playGame(player1, chipToken, 100e18);
+
+        // Should be in WaitingForDeal state
+        (VyreJackCore.GameState state, uint256 bet, address token,,,,,, uint256 vrfTimeoutAt,) =
+            game.getGameStatus(player1);
+
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.WaitingForDeal));
+        assertEq(bet, 100e18);
+        assertEq(token, chipToken);
+        assertGt(vrfTimeoutAt, 0, "vrfTimeoutAt should be set");
+        assertEq(vrfTimeoutAt, block.timestamp + 2 minutes);
+    }
+
+    function test_GetGameStatus_PlayerTurn() public {
+        // Start game and fulfill VRF
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 8; // Dealer: 9
+        cards[2] = 7; // Player: 8
+        cards[3] = 51; // Dealer hidden
+        vrf.fulfill(reqId, cards);
+
+        (
+            VyreJackCore.GameState state,,,
+            uint8[] memory playerCards,
+            uint8 playerValue,
+            bool playerIsSoft,
+            uint8 dealerVisibleCard,,,
+        ) = game.getGameStatus(player1);
+
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.PlayerTurn));
+        assertEq(playerCards.length, 2);
+        assertEq(playerValue, 14); // 6 + 8
+        assertFalse(playerIsSoft);
+        assertGt(dealerVisibleCard, 0);
+    }
+
+    // ==================== canRetryVRF TESTS ====================
+
+    function test_CanRetryVRF_NoGame() public view {
+        (bool canRetry, uint256 timeRemaining) = game.canRetryVRF(player1);
+        assertFalse(canRetry);
+        assertEq(timeRemaining, 0);
+    }
+
+    function test_CanRetryVRF_WaitingForDeal() public {
+        casino.playGame(player1, chipToken, 100e18);
+
+        // Immediately after, retry should not be available
+        (bool canRetry, uint256 timeRemaining) = game.canRetryVRF(player1);
+        assertFalse(canRetry);
+        assertEq(timeRemaining, 2 minutes);
+    }
+
+    function test_CanRetryVRF_AfterTimeout() public {
+        casino.playGame(player1, chipToken, 100e18);
+
+        // Warp past timeout
+        vm.warp(block.timestamp + 2 minutes + 1);
+
+        (bool canRetry, uint256 timeRemaining) = game.canRetryVRF(player1);
+        assertTrue(canRetry);
+        assertEq(timeRemaining, 0);
+    }
+
+    // ==================== VRFRequestPending EVENT TESTS ====================
+
+    function test_VRFRequestPending_EmittedOnPlay() public {
+        vm.expectEmit(true, false, false, true);
+        emit VyreJackCore.VRFRequestPending(player1, 1, VyreJackCore.RequestType.InitialDeal);
+
+        casino.playGame(player1, chipToken, 100e18);
+    }
+
+    function test_VRFRequestPending_EmittedOnHit() public {
+        // Setup: get to PlayerTurn
+        casino.playGame(player1, chipToken, 100e18);
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // 6
+        cards[1] = 8; // 9
+        cards[2] = 4; // 5
+        cards[3] = 51;
+        vrf.fulfill(vrf.getLastRequestId(), cards);
+
+        uint256 expectedReqId = vrf.getLastRequestId() + 1;
+
+        vm.expectEmit(true, false, false, true);
+        emit VyreJackCore.VRFRequestPending(
+            player1, expectedReqId, VyreJackCore.RequestType.PlayerHit
+        );
+
+        vm.prank(player1);
+        game.hit();
+    }
+}

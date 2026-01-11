@@ -181,7 +181,6 @@ contract VyreCasino is ReentrancyGuard {
     event TokenRemoved(address indexed token);
     event ReferrerSet(address indexed player, address indexed referrer);
     event ReferralEarningsClaimed(address indexed referrer, address indexed token, uint256 amount);
-    event PayoutSettled(address indexed player, address indexed game, address indexed token, uint256 grossPayout);
     event GamePlayed(
         address indexed player,
         address indexed game,
@@ -200,6 +199,9 @@ contract VyreCasino is ReentrancyGuard {
     event ReferralShareUpdated(uint256 oldBps, uint256 newBps);
     event XPRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
     event BuybackWalletUpdated(address indexed oldWallet, address indexed newWallet);
+    
+    /// @notice Emitted when async settlement is pending (for frontend tracking)
+    event SettlementPending(address indexed game, address indexed player, address token, uint256 expectedAmount);
 
     // ==================== MODIFIERS ====================
 
@@ -390,31 +392,6 @@ contract VyreCasino is ReentrancyGuard {
         emit ReferralEarningsClaimed(msg.sender, token, earnings);
     }
 
-    /**
-     * @notice Settle payout for async games (called by registered games)
-     * @dev Only registered games can call this function
-     * @param player Player to pay
-     * @param token Token to pay
-     * @param grossPayout Gross payout amount (house edge will be deducted)
-     */
-    function settlePayout(
-        address player,
-        address token,
-        uint256 grossPayout
-    ) external nonReentrant {
-        require(registeredGames[msg.sender], "VyreCasino: caller not registered game");
-        require(player != address(0), "VyreCasino: zero player");
-        require(grossPayout > 0, "VyreCasino: zero payout");
-
-        // Process the win (deducts house edge, handles referrals, pays player)
-        _processWin(player, token, grossPayout);
-
-        // Award XP for the payout (optional, based on payout amount)
-        _awardXP(player, grossPayout);
-
-        emit PayoutSettled(player, msg.sender, token, grossPayout);
-    }
-
     // ==================== ADMIN FUNCTIONS ====================
 
     function registerGame(
@@ -482,6 +459,33 @@ contract VyreCasino is ReentrancyGuard {
         emit BuybackWalletUpdated(oldWallet, _wallet);
     }
 
+    // ==================== GAME SETTLEMENT ====================
+
+    /**
+     * @notice Settle payout for async games (called by registered games after resolution)
+     * @dev Only registered games can call this. Used for multi-step games like Blackjack
+     *      where the final payout happens after player actions (hit, stand, surrender, etc)
+     * @param player Player to receive payout
+     * @param token Token to pay
+     * @param amount Gross payout amount (before house edge)
+     */
+    function settlePayout(
+        address player,
+        address token,
+        uint256 amount
+    ) external nonReentrant {
+        require(registeredGames[msg.sender], "VyreCasino: only registered games");
+        require(player != address(0), "VyreCasino: zero player");
+        
+        if (amount > 0) {
+            _processWin(player, token, amount);
+        }
+        
+        emit GameSettled(msg.sender, player, token, amount);
+    }
+
+    event GameSettled(address indexed game, address indexed player, address token, uint256 amount);
+
     function pause() external onlyOwner {
         paused = true;
         emit Paused(msg.sender);
@@ -523,6 +527,37 @@ contract VyreCasino is ReentrancyGuard {
         for (uint8 i = 0; i < 12; i++) {
             available[i] = balance >= CHIP_TIERS[i];
         }
+    }
+
+    /**
+     * @notice Get player stats for frontend dashboard (single call)
+     * @param player Player address
+     * @param token Token to check balance
+     * @return tokenBalance Player's token balance
+     * @return playerReferrer Player's referrer address
+     * @return playerReferralEarnings Player's referral earnings for this token
+     * @return isPaused Whether casino is paused
+     * @return currentHouseEdgeBps Current house edge in basis points
+     */
+    function getPlayerStats(
+        address player,
+        address token
+    )
+        external
+        view
+        returns (
+            uint256 tokenBalance,
+            address playerReferrer,
+            uint256 playerReferralEarnings,
+            bool isPaused,
+            uint256 currentHouseEdgeBps
+        )
+    {
+        tokenBalance = IERC20(token).balanceOf(player);
+        playerReferrer = referrers[player];
+        playerReferralEarnings = referralEarnings[player][token];
+        isPaused = paused;
+        currentHouseEdgeBps = houseEdgeBps;
     }
 
     // ==================== INTERNAL ====================

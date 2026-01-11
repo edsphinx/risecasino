@@ -724,3 +724,438 @@ contract VyreCasinoAdminTest is Test {
     }
 }
 
+/**
+ * @title VyreCasinoV5FeaturesTest
+ * @notice Tests for new V5 features: getPlayerStats(), settlePayout(), SettlementPending
+ */
+contract VyreCasinoV5FeaturesTest is Test {
+    VyreCasino public casino;
+    VyreTreasury public treasury;
+    MockCHIP public chip;
+    MockWinningGame public game;
+
+    address public owner = address(this);
+    address public player = address(0x1234);
+
+    function setUp() public {
+        chip = new MockCHIP();
+        treasury = new VyreTreasury(owner);
+        casino = new VyreCasino(address(treasury), address(chip), owner, address(0));
+
+        game = new MockWinningGame(address(casino));
+        casino.registerGame(address(game));
+
+        treasury.setOperator(address(casino));
+        chip.transfer(address(treasury), 100_000e18);
+        chip.transfer(player, 10_000e18);
+    }
+
+    // ==================== getPlayerStats() TESTS ====================
+
+    function test_GetPlayerStats_ReturnsCorrectBalance() public view {
+        (
+            uint256 tokenBalance,
+            address playerReferrer,
+            uint256 playerReferralEarnings,
+            bool isPaused,
+            uint256 currentHouseEdgeBps
+        ) = casino.getPlayerStats(player, address(chip));
+
+        assertEq(tokenBalance, 10_000e18);
+        assertEq(playerReferrer, address(0));
+        assertEq(playerReferralEarnings, 0);
+        assertEq(isPaused, false);
+        assertGt(currentHouseEdgeBps, 0); // default 1%
+    }
+
+    function test_GetPlayerStats_ShowsReferrer() public {
+        address referrer = address(0x999);
+        vm.prank(player);
+        casino.setReferrer(referrer);
+
+        (, address playerReferrer,,,) = casino.getPlayerStats(player, address(chip));
+
+        assertEq(playerReferrer, referrer);
+    }
+
+    function test_GetPlayerStats_ShowsPausedState() public {
+        casino.pause();
+
+        (,,, bool isPaused,) = casino.getPlayerStats(player, address(chip));
+
+        assertTrue(isPaused);
+    }
+
+    function test_GetPlayerStats_ShowsHouseEdge() public {
+        casino.setHouseEdge(200); // 2%
+
+        (,,,, uint256 currentHouseEdgeBps) = casino.getPlayerStats(player, address(chip));
+
+        assertEq(currentHouseEdgeBps, 200);
+    }
+
+    // ==================== settlePayout() TESTS ====================
+
+    function test_SettlePayout_OnlyRegisteredGame() public {
+        address fakeGame = address(0xFA4E);
+
+        vm.prank(fakeGame);
+        vm.expectRevert("VyreCasino: only registered games");
+        casino.settlePayout(player, address(chip), 100e18);
+    }
+
+    function test_SettlePayout_EmitsGameSettled() public {
+        // Register a mock game that will call settlePayout
+        MockSettleGame settleGame = new MockSettleGame(casino);
+        casino.registerGame(address(settleGame));
+
+        vm.expectEmit(true, true, false, true);
+        emit VyreCasino.GameSettled(address(settleGame), player, address(chip), 100e18);
+
+        settleGame.triggerSettle(player, address(chip), 100e18);
+    }
+}
+
+/**
+ * @title VyreCasinoSecurityTest
+ * @notice Security tests: access control, reentrancy, edge cases
+ */
+contract VyreCasinoSecurityTest is Test {
+    VyreCasino public casino;
+    VyreTreasury public treasury;
+    MockCHIP public chip;
+    MockWinningGame public game;
+
+    address public owner = address(this);
+    address public attacker = address(0xBA0);
+
+    function setUp() public {
+        chip = new MockCHIP();
+        treasury = new VyreTreasury(owner);
+        casino = new VyreCasino(address(treasury), address(chip), owner, address(0));
+
+        game = new MockWinningGame(address(casino));
+        casino.registerGame(address(game));
+
+        treasury.setOperator(address(casino));
+        chip.transfer(address(treasury), 100_000e18);
+    }
+
+    // ==================== ACCESS CONTROL TESTS ====================
+
+    function test_RevertSetHouseEdge_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.setHouseEdge(200);
+    }
+
+    function test_RevertRegisterGame_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.registerGame(address(0x123));
+    }
+
+    function test_RevertUnregisterGame_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.unregisterGame(address(game));
+    }
+
+    function test_RevertPause_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.pause();
+    }
+
+    function test_RevertUnpause_NotOwner() public {
+        casino.pause();
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.unpause();
+    }
+
+    function test_RevertWhitelistToken_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreCasino: only owner");
+        casino.whitelistToken(address(0x123));
+    }
+
+    // ==================== REENTRANCY TESTS ====================
+
+    function test_PlayIsNonReentrant() public {
+        // Setup reentrant game
+        ReentrantGame reentrantGame = new ReentrantGame(casino, chip);
+        casino.registerGame(address(reentrantGame));
+
+        chip.transfer(address(reentrantGame), 1000e18);
+
+        // This should be blocked by ReentrancyGuard
+        vm.expectRevert(); // ReentrancyGuard will revert
+        reentrantGame.attack();
+    }
+
+    // ==================== EDGE CASES ====================
+
+    function test_RevertPlayZeroBet() public {
+        chip.approve(address(casino), type(uint256).max);
+
+        vm.expectRevert("VyreCasino: zero bet");
+        casino.play(address(game), address(chip), 0, "");
+    }
+
+    function test_RevertPlayWhenPaused() public {
+        casino.pause();
+
+        chip.approve(address(casino), 100e18);
+
+        vm.expectRevert("VyreCasino: paused");
+        casino.play(address(game), address(chip), 100e18, "");
+    }
+
+    function test_RevertPlayUnregisteredGame() public {
+        address fakeGame = address(0x123);
+
+        chip.approve(address(casino), 100e18);
+
+        vm.expectRevert("VyreCasino: game not registered");
+        casino.play(fakeGame, address(chip), 100e18, "");
+    }
+
+    function test_RevertPlayNonWhitelistedToken() public {
+        MockCHIP fakeToken = new MockCHIP();
+        fakeToken.approve(address(casino), 100e18);
+
+        vm.expectRevert("VyreCasino: token not whitelisted");
+        casino.play(address(game), address(fakeToken), 100e18, "");
+    }
+
+    // ==================== HOUSE EDGE BOUNDS ====================
+
+    function test_RevertHouseEdgeTooHigh_Security() public {
+        vm.expectRevert("VyreCasino: max 10%");
+        casino.setHouseEdge(1001); // > 10%
+    }
+
+    function test_SetHouseEdgeAtMax_Security() public {
+        casino.setHouseEdge(1000); // Exactly 10%
+        assertEq(casino.houseEdgeBps(), 1000);
+    }
+}
+
+/**
+ * @title VyreJackCoreSecurityTest
+ * @notice Security tests for VyreJackCore: access control, VRF, edge cases
+ */
+contract VyreJackCoreSecurityTest is Test {
+    VyreJackCore public game;
+    MockVRF public vrf;
+
+    address public owner = address(this);
+    address public attacker = address(0xBA0);
+    address public casino = address(0xCA5);
+    address public chipToken = address(0xC01);
+
+    function setUp() public {
+        vrf = new MockVRF();
+        game = new VyreJackCore(address(vrf), casino);
+        vrf.setGame(address(game));
+
+        game.setBetLimits(chipToken, 1e18, 1000e18);
+    }
+
+    // ==================== VRF ACCESS CONTROL ====================
+
+    function test_RevertRawFulfill_NotVRF() public {
+        uint256[] memory randoms = new uint256[](4);
+
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only VRF");
+        game.rawFulfillRandomNumbers(1, randoms);
+    }
+
+    // ==================== CASINO ACCESS CONTROL ====================
+
+    function test_RevertPlay_NotCasino() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only casino");
+        game.play(
+            attacker, IVyreGame.BetInfo({ token: chipToken, amount: 100e18, chipTier: 0 }), ""
+        );
+    }
+
+    // ==================== OWNER FUNCTIONS ====================
+
+    function test_RevertSetActive_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only owner");
+        game.setActive(false);
+    }
+
+    function test_RevertSetBetLimits_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only owner");
+        game.setBetLimits(chipToken, 1e18, 100e18);
+    }
+
+    function test_RevertSetCasino_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only owner");
+        game.setCasino(attacker);
+    }
+
+    function test_RevertForceResolveGame_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert("VyreJackCore: only owner");
+        game.forceResolveGame(address(0x1));
+    }
+
+    // ==================== UUPS UPGRADE ====================
+
+    function test_RevertUpgrade_NotOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert();
+        game.upgradeToAndCall(address(0x123), "");
+    }
+
+    // ==================== VRF TIMEOUT ====================
+
+    function test_VRFTimeout_Constant() public view {
+        assertEq(game.VRF_TIMEOUT(), 2 minutes);
+    }
+
+    function test_RetryVRF_RequiresTimeout() public {
+        // Start a game
+        vm.prank(casino);
+        game.play(
+            address(0x1), IVyreGame.BetInfo({ token: chipToken, amount: 100e18, chipTier: 0 }), ""
+        );
+
+        // Try to retry immediately - should fail
+        vm.prank(address(0x1));
+        vm.expectRevert("VyreJackCore: timeout not reached");
+        game.retryVRF();
+    }
+
+    function test_RetryVRF_WorksAfterTimeout() public {
+        address player = address(0x1);
+
+        // Start a game
+        vm.prank(casino);
+        game.play(player, IVyreGame.BetInfo({ token: chipToken, amount: 100e18, chipTier: 0 }), "");
+
+        // Warp past timeout
+        vm.warp(block.timestamp + 2 minutes + 1);
+
+        // Now retry should work
+        vm.prank(player);
+        game.retryVRF();
+    }
+}
+
+/**
+ * @title MockSettleGame
+ * @notice Mock game that can call settlePayout
+ */
+contract MockSettleGame is IVyreGame {
+    VyreCasino public casino;
+
+    constructor(
+        VyreCasino _casino
+    ) {
+        casino = _casino;
+    }
+
+    function play(
+        address,
+        BetInfo calldata,
+        bytes calldata
+    ) external pure override returns (GameResult memory) {
+        return GameResult({ won: false, payout: 0, metadata: "" });
+    }
+
+    function name() external pure override returns (string memory) {
+        return "MockSettle";
+    }
+
+    function isActive() external pure override returns (bool) {
+        return true;
+    }
+
+    function minBet(
+        address
+    ) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function maxBet(
+        address
+    ) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function triggerSettle(
+        address player,
+        address token,
+        uint256 amount
+    ) external {
+        casino.settlePayout(player, token, amount);
+    }
+}
+
+/**
+ * @title ReentrantGame
+ * @notice Malicious game that tries to reenter casino
+ */
+contract ReentrantGame is IVyreGame {
+    VyreCasino public casino;
+    MockCHIP public chip;
+    bool public attacking;
+
+    constructor(
+        VyreCasino _casino,
+        MockCHIP _chip
+    ) {
+        casino = _casino;
+        chip = _chip;
+    }
+
+    function play(
+        address,
+        BetInfo calldata,
+        bytes calldata
+    ) external override returns (GameResult memory) {
+        if (attacking) {
+            // Try to reenter
+            chip.approve(address(casino), 100e18);
+            casino.play(address(this), address(chip), 100e18, "");
+        }
+        return GameResult({ won: false, payout: 0, metadata: "" });
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Reentrant";
+    }
+
+    function isActive() external pure override returns (bool) {
+        return true;
+    }
+
+    function minBet(
+        address
+    ) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function maxBet(
+        address
+    ) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function attack() external {
+        attacking = true;
+        chip.approve(address(casino), 100e18);
+        casino.play(address(this), address(chip), 100e18, "");
+    }
+}
+
