@@ -46,6 +46,22 @@
   gap: 0.35rem;
 }
 
+/* USDC balance styling in header */
+.wallet-trigger-usdc {
+  color: #38bdf8;
+}
+
+.wallet-trigger-usdc .usdc-amount {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.wallet-trigger-usdc .usdc-symbol {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
 /* Chip icon styling in trigger */
 .wallet-trigger-chip .chip-icon {
   flex-shrink: 0;

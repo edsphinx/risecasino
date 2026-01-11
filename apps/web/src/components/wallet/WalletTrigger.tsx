@@ -1,12 +1,16 @@
 /**
  * WalletTrigger - The clickable wallet button (presentation only)
- * Shows connection status, ETH balance, and address
+ * Shows connection status, USDC balance (primary for gaming), and address
+ *
+ * NOTE: Rise Wallet sponsors gas fees, so we prioritize showing USDC
+ * (the betting token) rather than ETH balance in the header.
  */
 
-import { shortenAddress, formatEthBalance } from '@/lib/formatters';
+import { shortenAddress } from '@/lib/formatters';
+import type { AssetInfo } from '@/hooks/useAssetBalances';
 
 interface WalletTriggerProps {
-  ethBalance: string; // ETH balance (raw)
+  assets: AssetInfo[]; // Array of assets with balances
   address: string;
   hasSessionKey: boolean;
   isOpen: boolean;
@@ -14,20 +18,24 @@ interface WalletTriggerProps {
 }
 
 export function WalletTrigger({
-  ethBalance,
+  assets,
   address,
   hasSessionKey,
   isOpen,
   onClick,
 }: WalletTriggerProps) {
+  // Find USDC asset
+  const usdcAsset = assets.find((a) => a.symbol === 'USDC');
+  const usdcBalance = usdcAsset?.balance ?? '0';
+
   return (
     <button className="wallet-trigger" onClick={onClick}>
       <div className="wallet-trigger-left">
         <span className="wallet-trigger-dot" />
-        {/* ETH balance */}
-        <span className="wallet-trigger-balance wallet-trigger-eth">
-          <span>{formatEthBalance(ethBalance, 4)}</span>
-          <span className="eth-symbol">Ξ</span>
+        {/* USDC balance - primary display for gaming */}
+        <span className="wallet-trigger-balance wallet-trigger-usdc">
+          <span className="usdc-amount">${usdcBalance}</span>
+          <span className="usdc-symbol">USDC</span>
         </span>
       </div>
       <div className="wallet-trigger-right">

@@ -23,6 +23,7 @@ import {
   VYRECASINO_ADDRESS,
   VYREJACKCORE_ADDRESS,
   CHIP_TOKEN_ADDRESS,
+  USDC_TOKEN_ADDRESS,
 } from '@/lib/contract';
 import { logger } from '@/lib/logger';
 import { logEvent } from '@/lib/api';
@@ -151,16 +152,21 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
   /**
    * Send transaction using session key pattern (Prepare -> Sign -> Send)
+   * Includes retry logic for nonce/duplicate call errors
    */
   const sendSessionTransaction = useCallback(
-    async (to: `0x${string}`, value: bigint, data: `0x${string}`): Promise<string | null> => {
+    async (
+      to: `0x${string}`,
+      value: bigint,
+      data: `0x${string}`,
+      maxRetries = 3
+    ): Promise<string | null> => {
       if (!address) return null;
 
       const provider = getProvider();
 
       // 1. Get or Create Session Key
       // This will use existing from localStorage OR create new one via popup
-      // No extra validation steps here
       let sessionKey: SessionKeyData;
       try {
         sessionKey = await ensureSessionKey(address, tokenContext);
@@ -171,77 +177,93 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
       const hexValue = value ? `0x${value.toString(16)}` : '0x0';
 
-      // 2. Prepare Call
-      // Added detailed params to match wallet-demo exactly
-      const prepareParams = [
-        {
-          calls: [
+      // Retry loop for handling nonce/duplicate call errors
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // 2. Prepare Call
+          const prepareParams = [
             {
-              to: to.toLowerCase(),
-              value: hexValue,
-              data,
+              calls: [
+                {
+                  to: to.toLowerCase(),
+                  value: hexValue,
+                  data,
+                },
+              ],
+              chainId: '0xaa39db', // Rise Testnet
+              from: address,
+              atomicRequired: true,
+              key: {
+                type: 'p256',
+                publicKey: sessionKey.publicKey,
+              },
             },
-          ],
-          chainId: '0xaa39db', // Rise Testnet
-          from: address,
-          atomicRequired: true,
-          key: {
-            type: 'p256',
-            publicKey: sessionKey.publicKey,
-          },
-        },
-      ];
+          ];
 
-      logger.log('[VyreCasino] Preparing calls with params:', prepareParams);
+          logger.log(`[VyreCasino] Preparing call (attempt ${attempt}/${maxRetries})...`);
 
-      const prepared = await (provider as any).request({
-        method: 'wallet_prepareCalls',
-        params: prepareParams,
-      });
+          const prepared = await (provider as any).request({
+            method: 'wallet_prepareCalls',
+            params: prepareParams,
+          });
 
-      logger.log('[VyreCasino] Prepared object:', prepared);
+          // 3. Sign Call
+          const { digest, ...request } = prepared;
+          const signature = signWithSessionKey(digest, sessionKey);
 
-      // 3. Sign Call
-      // Pattern from wallet-demo tests (provider.test.ts line 3055):
-      // const { digest, ...request } = prepared
-      // then: { ...request, signature }
-      const { digest, ...request } = prepared;
-      const signature = signWithSessionKey(digest, sessionKey);
+          logger.log('[VyreCasino] Signed with session key');
 
-      logger.log('[VyreCasino] Generated signature:', signature);
+          // 4. Send Call
+          const sendParams = {
+            ...request,
+            signature,
+          };
 
-      // 4. Send Call
-      // Spread all prepared fields except digest, add our signature
-      const sendParams = {
-        ...request,
-        signature,
-      };
+          const response = await (provider as any).request({
+            method: 'wallet_sendPreparedCalls',
+            params: [sendParams],
+          });
 
-      logger.log(
-        '[VyreCasino] Sending prepared calls with params:',
-        JSON.stringify(sendParams, null, 2)
-      );
+          // 5. Handle Response & Poll
+          let callId: string;
+          if (Array.isArray(response) && response.length > 0) {
+            callId = response[0].id;
+          } else if (typeof response === 'string') {
+            callId = response;
+          } else if (response && typeof response === 'object' && 'id' in response) {
+            callId = (response as any).id;
+          } else {
+            throw new Error('Invalid response from wallet_sendPreparedCalls');
+          }
 
-      const response = await (provider as any).request({
-        method: 'wallet_sendPreparedCalls',
-        params: [sendParams],
-      });
+          logger.log(`[VyreCasino] Transaction sent, ID: ${callId}`);
 
-      // 5. Handle Response & Poll
-      let callId: string;
-      if (Array.isArray(response) && response.length > 0) {
-        callId = response[0].id;
-      } else if (typeof response === 'string') {
-        callId = response;
-      } else if (response && typeof response === 'object' && 'id' in response) {
-        callId = (response as any).id;
-      } else {
-        throw new Error('Invalid response from wallet_sendPreparedCalls');
+          const txHash = await waitForTransactionStatus(provider, callId);
+
+          // Add small delay after success to let relay update nonce
+          await new Promise((r) => setTimeout(r, 1000));
+
+          return txHash;
+        } catch (err) {
+          const errMsg = String(err);
+
+          // Check for duplicate call / nonce errors
+          if (errMsg.includes('duplicate call') || errMsg.includes('nonce')) {
+            if (attempt < maxRetries) {
+              logger.warn(
+                `[VyreCasino] Nonce/duplicate error, retrying in 3s... (${attempt}/${maxRetries})`
+              );
+              await new Promise((r) => setTimeout(r, 3000));
+              continue;
+            }
+          }
+
+          // Propagate other errors
+          throw err;
+        }
       }
 
-      logger.log(`[VyreCasino] Transaction sent, ID: ${callId}`);
-
-      return waitForTransactionStatus(provider, callId);
+      throw new Error('Max retries exceeded for session transaction');
     },
     [address, tokenContext]
   );
@@ -345,13 +367,9 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
       // Determine decimals based on token
       // USDC uses 6 decimals, CHIP uses 18
-      // We should really get this from token metadata, but for now we hardcode known tokens
-      const isUSDC = token.toLowerCase() === '0x062fcbbe1ca8fc6d79d9a650d8022412d53b08f6'; // Replace with constant check ideally
-      // Actually we have tokenContext passed in, maybe use that?
-      // But safer to check address or assumes 18 unless specified.
-      // VyreJackUsdc passes token context USDC.
+      const isUSDC = token.toLowerCase() === USDC_TOKEN_ADDRESS.toLowerCase();
 
-      const decimals = isUSDC || token.toLowerCase().includes('cbe1c') ? 6 : 18;
+      const decimals = isUSDC ? 6 : 18;
       const betWei = parseUnits(betAmount, decimals);
 
       setIsLoading(true);

@@ -28,11 +28,10 @@ import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
 import { ActionButtons } from './ActionButtons';
 import { XPGainPopup } from './XPGainPopup';
-import { ShareVictory } from './ShareVictory';
+import { GameResultOverlay } from './GameResultOverlay';
 import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
 import { logger } from '@/lib/logger';
-import type { GameResult } from '@vyrejack/shared';
 import './styles/casino-table.css';
 import './styles/action-buttons.css';
 
@@ -182,38 +181,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   // Hide dealer's second card during player turn (not during result)
   const hideSecondCard = isPlayerTurn && !showingResult;
 
-  // DEGEN UX result style with neon colors
-  const getResultStyle = (result: GameResult) => {
-    switch (result) {
-      case 'win':
-      case 'blackjack':
-        return {
-          bg: 'bg-gradient-to-r from-emerald-400 via-green-400 to-cyan-400',
-          text: 'text-black',
-          emoji: result === 'blackjack' ? '💎🙌' : '🚀',
-          message: result === 'blackjack' ? 'BLACKJACK! WAGMI!' : 'LFG! YOU WIN!',
-        };
-      case 'lose':
-        return {
-          bg: 'bg-gradient-to-r from-red-600 to-rose-600',
-          text: 'text-white',
-          emoji: '💀',
-          message: 'NGMI - DEALER WINS',
-        };
-      case 'push':
-        return {
-          bg: 'bg-gradient-to-r from-yellow-400 to-amber-400',
-          text: 'text-black',
-          emoji: '🤝',
-          message: 'PUSH - BET RETURNED',
-        };
-      default:
-        return null;
-    }
-  };
-
-  const resultStyle = displayResult ? getResultStyle(displayResult) : null;
-
   // Format bet for display
   const formatBetDisplay = (bet: bigint | undefined) => {
     if (!bet) return '--';
@@ -324,37 +291,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                 </span>
               </div>
 
-              {/* INLINE RESULT BANNER - DEGEN UX */}
-              {displayResult && resultStyle && (
-                <div className={`result-banner ${resultStyle.bg} ${resultStyle.text}`}>
-                  <div className="result-top">
-                    <span className="result-emoji">{resultStyle.emoji}</span>
-                    <span className="result-message">{resultStyle.message}</span>
-                  </div>
-                  {/* Score pill */}
-                  {lastGameResult && (
-                    <span className="result-values">
-                      You: {lastGameResult.playerValue} • Dealer: {lastGameResult.dealerValue}
-                    </span>
-                  )}
-                  {/* Share Victory button - only for wins */}
-                  {(displayResult === 'win' || displayResult === 'blackjack') && (
-                    <div className="mt-3">
-                      <ShareVictory
-                        outcome={displayResult}
-                        winAmount={
-                          lastGameResult?.payout
-                            ? formatBetDisplay(lastGameResult.payout)
-                            : undefined
-                        }
-                        walletAddress={wallet.address ?? undefined}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* XP Gain Popup */}
+              {/* XP Gain Popup - stays on table */}
               {xpPopup && (
                 <XPGainPopup key={xpPopup.key} xpAmount={xpPopup.xp} onComplete={hideXPPopup} />
               )}
@@ -423,6 +360,26 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           )}
         </div>
       </main>
+
+      {/* Full-screen result overlay */}
+      {showingResult && lastGameResult && displayResult && (
+        <GameResultOverlay
+          result={displayResult}
+          playerCards={[...displayPlayerCards]}
+          dealerCards={[...displayDealerCards]}
+          playerValue={displayPlayerValue ?? 0}
+          dealerValue={displayDealerValue ?? 0}
+          bet={betAmount}
+          payout={lastGameResult.payout ? formatBetDisplay(lastGameResult.payout) : undefined}
+          tokenSymbol={tokenSymbol}
+          xpEarned={xpPopup?.xp}
+          onPlayAgain={(newBet) => {
+            setBetAmount(newBet);
+            handleNewGame();
+          }}
+          onChangeBet={handleNewGame}
+        />
+      )}
     </div>
   );
 }

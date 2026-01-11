@@ -109,7 +109,7 @@ export function WalletConnect({
   return (
     <div className="wallet-section" ref={dropdownRef}>
       <WalletTrigger
-        ethBalance={balanceString || '0'}
+        assets={assets}
         address={account || ''}
         hasSessionKey={hasSessionKey}
         isOpen={dropdownOpen}
