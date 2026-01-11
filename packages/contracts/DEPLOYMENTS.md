@@ -4,6 +4,87 @@
 
 ---
 
+## VyreCasino Architecture v6.0 (UUPS) - 2026-01-11
+
+**Deployed via Hardhat with UUPS Proxy Pattern**  
+**New Features:** UUPS Upgradeable, VRF Timeout 2min, getGameStatus, getPlayerStats, settlePayout callback
+
+### VyreJackCore (UUPS Proxy) ⭐ CURRENT
+
+**Contract:** VyreJackCore (UUPS Upgradeable Blackjack Game)  
+**Proxy Address:** [`0x961715D101DaadfE477c7A7C136dCBbca3A9ad10`](https://explorer.testnet.riselabs.xyz/address/0x961715D101DaadfE477c7A7C136dCBbca3A9ad10)  
+**Implementation:** [`0xb0Cb2CF16418af6751D312544A56c58EEa46eF0A`](https://explorer.testnet.riselabs.xyz/address/0xb0Cb2CF16418af6751D312544A56c58EEa46eF0A)  
+**Owner:** Deployer (pending SAFE transfer)  
+**VRF Coordinator:** `0x9d57aB4517ba97349551C876a01a7580B1338909`  
+**Verified:** ✅ Both Proxy and Implementation
+
+**New Features (v6.0):**
+
+- UUPS upgradeable via `upgradeToAndCall()`
+- VRF_TIMEOUT = 120 seconds (2 min)
+- `getGameStatus(player)` view function
+- `VRFRequestPending` event for tracking
+- Enhanced VRF entropy in card dealing
+- `double()` and `surrender()` actions
+
+**Bet Limits:**
+
+| Token | Min      | Max         |
+| ----- | -------- | ----------- |
+| USDC  | 1 USDC   | 100 USDC    |
+| CHIP  | 100 CHIP | 10,000 CHIP |
+
+### VyreCasino V2 ⭐ CURRENT
+
+**Contract:** VyreCasino (Central Orchestrator)  
+**Version:** v2.0 (settlePayout + getPlayerStats)  
+**Address:** [`0x0f4D3f9c872c218132A00c08d54eb516D82438b8`](https://explorer.testnet.riselabs.xyz/address/0x0f4D3f9c872c218132A00c08d54eb516D82438b8)  
+**Owner:** Deployer (pending SAFE transfer)  
+**Verified:** ✅ [Blockscout](https://explorer.testnet.riselabs.xyz/address/0x0f4D3f9c872c218132A00c08d54eb516D82438b8#code)
+
+**New Features (v2.0):**
+
+- `settlePayout(player, token, amount)` callback for async games
+- `getPlayerStats(player, token)` view function
+- `SettlementPending` event for tracking
+- Permit2 gasless approvals
+
+**Configuration:**
+
+| Setting     | Value                                        |
+| ----------- | -------------------------------------------- |
+| Treasury    | `0x2be1229CEcF28702A50f68eD9592234a830845ae` |
+| CHIP Token  | `0x4B882AF56262d2786754E38600589fc1347FdF1E` |
+| USDC        | `0x8A93d247134d91e0de6f96547cB0204e5BE8e5D8` |
+| House Edge  | 2% (200 bps)                                 |
+| Whitelisted | CHIP, USDC                                   |
+
+### VyreTreasury
+
+**Contract:** VyreTreasury  
+**Address:** [`0x2be1229CEcF28702A50f68eD9592234a830845ae`](https://explorer.testnet.riselabs.xyz/address/0x2be1229CEcF28702A50f68eD9592234a830845ae)  
+**Owner:** SAFE Multisig  
+**Operator:** VyreCasino V2 (`0x0f4D3f9c872c218132A00c08d54eb516D82438b8`)  
+**Verified:** ✅
+
+### Ownership Structure (V6)
+
+```
+Deployer ─────────────────────────────────────────────────────
+(pending SAFE transfer)  0xB55b2Ed00193864c58b355999eaa8BfEc302515E
+├──────────┬──────────────────────────────────────────────────┤
+▼          ▼
+VyreJackCore    VyreCasino V2
+(UUPS Proxy)    (orchestrator)
+      ↓               ↓
+      └───────────────┴────→ VyreTreasury (SAFE owned)
+                                    ↓
+                             SAFE Multisig (2/3)
+                             0x108ca5cf713cb0b964d187f19cd7b7d317841c31
+```
+
+---
+
 ## VyreCasino Architecture v3.0 - 2026-01-07
 
 **Deployed via Safe SDK with multisig ownership**  

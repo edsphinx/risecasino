@@ -1,5 +1,7 @@
-// Auto-generated - DO NOT EDIT
-// Generated from: packages/hardhat-deploy/artifacts/contracts/VyreJackCore.sol/VyreJackCore.json
+/**
+ * VYREJACKCORE_ABI - Auto-generated from Hardhat artifacts
+ * Generated: 2026-01-11
+ */
 
 export const VYREJACKCORE_ABI = [
   {
@@ -21,6 +23,48 @@ export const VYREJACKCORE_ABI = [
   {
     inputs: [
       {
+        internalType: 'address',
+        name: 'target',
+        type: 'address',
+      },
+    ],
+    name: 'AddressEmptyCode',
+    type: 'error',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'implementation',
+        type: 'address',
+      },
+    ],
+    name: 'ERC1967InvalidImplementation',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'ERC1967NonPayable',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'FailedCall',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'InvalidInitialization',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'NotInitializing',
+    type: 'error',
+  },
+  {
+    inputs: [
+      {
         internalType: 'uint8',
         name: 'bits',
         type: 'uint8',
@@ -32,6 +76,22 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     name: 'SafeCastOverflowedUintDowncast',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'UUPSUnauthorizedCallContext',
+    type: 'error',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'bytes32',
+        name: 'slot',
+        type: 'bytes32',
+      },
+    ],
+    name: 'UUPSUnsupportedProxiableUUID',
     type: 'error',
   },
   {
@@ -189,6 +249,25 @@ export const VYREJACKCORE_ABI = [
         type: 'address',
       },
       {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'refundAmount',
+        type: 'uint256',
+      },
+    ],
+    name: 'GameForceResolved',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
         indexed: true,
         internalType: 'address',
         name: 'token',
@@ -313,6 +392,19 @@ export const VYREJACKCORE_ABI = [
     anonymous: false,
     inputs: [
       {
+        indexed: false,
+        internalType: 'uint64',
+        name: 'version',
+        type: 'uint64',
+      },
+    ],
+    name: 'Initialized',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
         indexed: true,
         internalType: 'address',
         name: 'previousOwner',
@@ -345,6 +437,37 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     name: 'OwnershipTransferred',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'grossAmount',
+        type: 'uint256',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'netAmount',
+        type: 'uint256',
+      },
+    ],
+    name: 'PayoutProcessed',
     type: 'event',
   },
   {
@@ -391,6 +514,44 @@ export const VYREJACKCORE_ABI = [
       {
         indexed: true,
         internalType: 'address',
+        name: 'implementation',
+        type: 'address',
+      },
+    ],
+    name: 'Upgraded',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'requestId',
+        type: 'uint256',
+      },
+      {
+        indexed: false,
+        internalType: 'enum VyreJackCore.RequestType',
+        name: 'requestType',
+        type: 'uint8',
+      },
+    ],
+    name: 'VRFRequestPending',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
         name: 'player',
         type: 'address',
       },
@@ -408,6 +569,56 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     name: 'VRFRequested',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'oldRequestId',
+        type: 'uint256',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'newRequestId',
+        type: 'uint256',
+      },
+    ],
+    name: 'VRFRetried',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'requestId',
+        type: 'uint256',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'timeoutAt',
+        type: 'uint256',
+      },
+    ],
+    name: 'VRFTimeoutReached',
     type: 'event',
   },
   {
@@ -542,6 +753,32 @@ export const VYREJACKCORE_ABI = [
   },
   {
     inputs: [],
+    name: 'UPGRADE_INTERFACE_VERSION',
+    outputs: [
+      {
+        internalType: 'string',
+        name: '',
+        type: 'string',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'VRF_TIMEOUT',
+    outputs: [
+      {
+        internalType: 'uint256',
+        name: '',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
     name: 'acceptOwnership',
     outputs: [],
     stateMutability: 'nonpayable',
@@ -582,6 +819,30 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     stateMutability: 'pure',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+    ],
+    name: 'canRetryVRF',
+    outputs: [
+      {
+        internalType: 'bool',
+        name: 'canRetry',
+        type: 'bool',
+      },
+      {
+        internalType: 'uint256',
+        name: 'timeRemaining',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
     type: 'function',
   },
   {
@@ -634,6 +895,26 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'double',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+    ],
+    name: 'forceResolveGame',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function',
   },
   {
@@ -720,8 +1001,90 @@ export const VYREJACKCORE_ABI = [
     type: 'function',
   },
   {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+    ],
+    name: 'getGameStatus',
+    outputs: [
+      {
+        internalType: 'enum VyreJackCore.GameState',
+        name: 'state',
+        type: 'uint8',
+      },
+      {
+        internalType: 'uint256',
+        name: 'bet',
+        type: 'uint256',
+      },
+      {
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        internalType: 'uint8[]',
+        name: 'playerCards',
+        type: 'uint8[]',
+      },
+      {
+        internalType: 'uint8',
+        name: 'playerValue',
+        type: 'uint8',
+      },
+      {
+        internalType: 'bool',
+        name: 'playerIsSoft',
+        type: 'bool',
+      },
+      {
+        internalType: 'uint8',
+        name: 'dealerVisibleCard',
+        type: 'uint8',
+      },
+      {
+        internalType: 'bool',
+        name: 'canRetry',
+        type: 'bool',
+      },
+      {
+        internalType: 'uint256',
+        name: 'vrfTimeoutAt',
+        type: 'uint256',
+      },
+      {
+        internalType: 'bool',
+        name: 'isDoubled',
+        type: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     inputs: [],
     name: 'hit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: '_vrfCoordinator',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: '_casino',
+        type: 'address',
+      },
+    ],
+    name: 'initialize',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
@@ -937,6 +1300,19 @@ export const VYREJACKCORE_ABI = [
     type: 'function',
   },
   {
+    inputs: [],
+    name: 'proxiableUUID',
+    outputs: [
+      {
+        internalType: 'bytes32',
+        name: '',
+        type: 'bytes32',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     inputs: [
       {
         internalType: 'uint256',
@@ -950,6 +1326,13 @@ export const VYREJACKCORE_ABI = [
       },
     ],
     name: 'rawFulfillRandomNumbers',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'retryVRF',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
@@ -1029,6 +1412,13 @@ export const VYREJACKCORE_ABI = [
     type: 'function',
   },
   {
+    inputs: [],
+    name: 'surrender',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
     inputs: [
       {
         internalType: 'address',
@@ -1039,6 +1429,24 @@ export const VYREJACKCORE_ABI = [
     name: 'transferOwnership',
     outputs: [],
     stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'newImplementation',
+        type: 'address',
+      },
+      {
+        internalType: 'bytes',
+        name: 'data',
+        type: 'bytes',
+      },
+    ],
+    name: 'upgradeToAndCall',
+    outputs: [],
+    stateMutability: 'payable',
     type: 'function',
   },
   {
@@ -1067,7 +1475,6 @@ export const VYREJACKCORE_ABI = [
         type: 'bool',
       },
     ],
-    stateMutability: 'view',
     type: 'function',
   },
 ] as const;

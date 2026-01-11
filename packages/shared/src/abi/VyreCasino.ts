@@ -1,5 +1,7 @@
-// Auto-generated - DO NOT EDIT
-// Generated from: packages/hardhat-deploy/artifacts/contracts/VyreCasino.sol/VyreCasino.json
+/**
+ * VYRECASINO_ABI - Auto-generated from Hardhat artifacts
+ * Generated: 2026-01-11
+ */
 
 export const VYRECASINO_ABI = [
   {
@@ -123,6 +125,37 @@ export const VYRECASINO_ABI = [
       },
     ],
     name: 'GameRegistered',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'game',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'amount',
+        type: 'uint256',
+      },
+    ],
+    name: 'GameSettled',
     type: 'event',
   },
   {
@@ -277,6 +310,37 @@ export const VYRECASINO_ABI = [
       {
         indexed: true,
         internalType: 'address',
+        name: 'game',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'expectedAmount',
+        type: 'uint256',
+      },
+    ],
+    name: 'SettlementPending',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
         name: 'token',
         type: 'address',
       },
@@ -362,6 +426,19 @@ export const VYRECASINO_ABI = [
         internalType: 'uint256',
         name: '',
         type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'PERMIT2',
+    outputs: [
+      {
+        internalType: 'contract IPermit2',
+        name: '',
+        type: 'address',
       },
     ],
     stateMutability: 'view',
@@ -470,6 +547,50 @@ export const VYRECASINO_ABI = [
     type: 'function',
   },
   {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+    ],
+    name: 'getPlayerStats',
+    outputs: [
+      {
+        internalType: 'uint256',
+        name: 'tokenBalance',
+        type: 'uint256',
+      },
+      {
+        internalType: 'address',
+        name: 'playerReferrer',
+        type: 'address',
+      },
+      {
+        internalType: 'uint256',
+        name: 'playerReferralEarnings',
+        type: 'uint256',
+      },
+      {
+        internalType: 'bool',
+        name: 'isPaused',
+        type: 'bool',
+      },
+      {
+        internalType: 'uint256',
+        name: 'currentHouseEdgeBps',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     inputs: [],
     name: 'houseEdgeBps',
     outputs: [
@@ -552,6 +673,96 @@ export const VYRECASINO_ABI = [
       },
     ],
     name: 'play',
+    outputs: [
+      {
+        components: [
+          {
+            internalType: 'bool',
+            name: 'won',
+            type: 'bool',
+          },
+          {
+            internalType: 'uint256',
+            name: 'payout',
+            type: 'uint256',
+          },
+          {
+            internalType: 'bytes',
+            name: 'metadata',
+            type: 'bytes',
+          },
+        ],
+        internalType: 'struct IVyreGame.GameResult',
+        name: 'result',
+        type: 'tuple',
+      },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'game',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        internalType: 'uint256',
+        name: 'amount',
+        type: 'uint256',
+      },
+      {
+        internalType: 'bytes',
+        name: 'gameData',
+        type: 'bytes',
+      },
+      {
+        components: [
+          {
+            components: [
+              {
+                internalType: 'address',
+                name: 'token',
+                type: 'address',
+              },
+              {
+                internalType: 'uint256',
+                name: 'amount',
+                type: 'uint256',
+              },
+            ],
+            internalType: 'struct IPermit2.TokenPermissions',
+            name: 'permitted',
+            type: 'tuple',
+          },
+          {
+            internalType: 'uint256',
+            name: 'nonce',
+            type: 'uint256',
+          },
+          {
+            internalType: 'uint256',
+            name: 'deadline',
+            type: 'uint256',
+          },
+        ],
+        internalType: 'struct IPermit2.PermitTransferFrom',
+        name: 'permit',
+        type: 'tuple',
+      },
+      {
+        internalType: 'bytes',
+        name: 'signature',
+        type: 'bytes',
+      },
+    ],
+    name: 'playWithPermit',
     outputs: [
       {
         components: [
@@ -762,6 +973,29 @@ export const VYRECASINO_ABI = [
     inputs: [
       {
         internalType: 'address',
+        name: 'player',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: 'token',
+        type: 'address',
+      },
+      {
+        internalType: 'uint256',
+        name: 'amount',
+        type: 'uint256',
+      },
+    ],
+    name: 'settlePayout',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
         name: 'newOwner',
         type: 'address',
       },
@@ -872,7 +1106,6 @@ export const VYRECASINO_ABI = [
         type: 'address',
       },
     ],
-    stateMutability: 'view',
     type: 'function',
   },
 ] as const;
