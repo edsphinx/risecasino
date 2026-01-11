@@ -17,6 +17,19 @@ import { IVyreGame } from "../../interfaces/IVyreGame.sol";
 import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
 import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+/// @notice Interface for VyreCasino settlement
+interface IVyreCasino {
+    function settlePayout(
+        address player,
+        address token,
+        uint256 amount
+    ) external;
+}
 
 /**
  * @title  VyreJackCore
@@ -35,7 +48,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *           async callback pattern for cryptographic security.
  *         - Access Control: Only VyreCasino can call play(), only VRF can callback.
  */
-contract VyreJackCore is IVyreGame, IVRFConsumer {
+contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable {
     // ----------------------------------------------------------------------
     //  CONSTANTS
     // ----------------------------------------------------------------------
@@ -71,12 +84,15 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     /// @notice Number of ranks per suit (A-K)
     uint8 public constant RANKS_PER_SUIT = 13;
 
+    /// @notice VRF timeout duration (2 minutes - optimized for Rise Chain enshrined VRF)
+    uint256 public constant VRF_TIMEOUT = 2 minutes;
+
     // ----------------------------------------------------------------------
     //  STORAGE
     // ----------------------------------------------------------------------
 
-    /// @notice VRF Coordinator for randomness
-    IVRFCoordinator public immutable coordinator;
+    /// @notice VRF Coordinator for randomness (not immutable for UUPS compatibility)
+    IVRFCoordinator public coordinator;
 
     /// @notice Address of VyreCasino contract (only caller for play())
     address public casino;
@@ -188,6 +204,9 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     /// @notice Emitted when VRF is requested (for tracking async state)
     event VRFRequested(address indexed player, uint256 requestId, RequestType requestType);
 
+    /// @notice Emitted when VRF request is pending (for frontend real-time tracking)
+    event VRFRequestPending(address indexed player, uint256 requestId, RequestType requestType);
+
     /// @notice Emitted when dealer hole card is revealed
     event DealerCardRevealed(address indexed player, uint8 card);
 
@@ -196,6 +215,14 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
 
     /// @notice Emitted when dealer busts
     event DealerBusted(address indexed player, uint8 finalValue);
+
+    /// @notice Emitted when VRF timeout is reached (frontend can show retry button)
+    event VRFTimeoutReached(address indexed player, uint256 requestId, uint256 timeoutAt);
+
+    /// @notice Emitted when payout is sent to player
+    event PayoutProcessed(
+        address indexed player, address indexed token, uint256 grossAmount, uint256 netAmount
+    );
 
     /// @notice Emitted when game is activated/deactivated
     event ActiveChanged(bool active);
@@ -238,18 +265,40 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     }
 
     // ----------------------------------------------------------------------
-    // ░░  CONSTRUCTOR
+    // ░░  CONSTRUCTOR / INITIALIZER (UUPS)
     // ----------------------------------------------------------------------
 
     /**
-     * @notice Deploys VyreJackCore with VRF and Casino configuration.
-     * @param _vrfCoordinator Address of VRF Coordinator (use address(0) for Rise testnet default)
-     * @param _casino Address of VyreCasino contract that will call play()
+     * @notice Deploy directly (for testing) or as implementation for proxy
+     * @dev When deploying through proxy, use initialize() instead
      */
     constructor(
         address _vrfCoordinator,
         address _casino
     ) {
+        // If params provided, initialize directly (for tests)
+        // If deploying as implementation, pass address(0), address(0)
+        if (_vrfCoordinator != address(0) || _casino != address(0)) {
+            _initialize(_vrfCoordinator, _casino);
+        }
+    }
+
+    /**
+     * @notice Initialize VyreJackCore (UUPS proxy pattern)
+     * @param _vrfCoordinator Address of VRF Coordinator (use address(0) for Rise testnet default)
+     * @param _casino Address of VyreCasino contract that will call play()
+     */
+    function initialize(
+        address _vrfCoordinator,
+        address _casino
+    ) external initializer {
+        _initialize(_vrfCoordinator, _casino);
+    }
+
+    function _initialize(
+        address _vrfCoordinator,
+        address _casino
+    ) internal {
         if (_vrfCoordinator == address(0)) {
             coordinator = IVRFCoordinator(DEFAULT_VRF_COORDINATOR);
         } else {
@@ -295,10 +344,16 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
             isDoubled: false
         });
 
-        // Request VRF for initial deal
+        // Request VRF for initial deal with enhanced entropy
         uint256 nonce = playerNonces[player]++;
-        uint256 seed = uint256(keccak256(abi.encode(player, block.timestamp, nonce)));
+        uint256 seed = uint256(
+            keccak256(
+                abi.encodePacked(player, block.timestamp, block.prevrandao, block.number, nonce)
+            )
+        );
         uint256 requestId = coordinator.requestRandomNumbers(4, seed);
+
+        emit VRFRequestPending(player, requestId, RequestType.InitialDeal);
 
         vrfRequests[requestId] =
             VRFRequest({ player: player, requestType: RequestType.InitialDeal, fulfilled: false });
@@ -373,6 +428,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         });
 
         emit VRFRequested(msg.sender, requestId, RequestType.PlayerHit);
+        emit VRFRequestPending(msg.sender, requestId, RequestType.PlayerHit);
     }
 
     function stand() external {
@@ -405,6 +461,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         });
 
         emit VRFRequested(msg.sender, requestId, RequestType.PlayerDouble);
+        emit VRFRequestPending(msg.sender, requestId, RequestType.PlayerDouble);
     }
 
     /// @notice Surrender - forfeit the hand and get half the bet back
@@ -562,6 +619,8 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
             vrfRequests[requestId] = VRFRequest({
                 player: player, requestType: RequestType.DealerDraw, fulfilled: false
             });
+
+            emit VRFRequestPending(player, requestId, RequestType.DealerDraw);
         } else {
             _resolveGame(player);
         }
@@ -635,16 +694,21 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         uint256 payout
     ) internal {
         Game storage game = games[player];
+        address token = game.token;
+        uint256 bet = game.bet;
+
         game.state = result;
 
         // Emit event for indexer
-        emit IVyreGame.GamePlayed(player, game.token, game.bet, payout > game.bet, payout);
+        emit IVyreGame.GamePlayed(player, token, bet, payout > bet, payout);
 
-        // Reset game
+        // Reset game BEFORE external call (CEI pattern)
         delete games[player];
 
-        // TODO: Notify VyreCasino of result for payout
-        // This requires VyreCasino to have a callback or poll mechanism
+        // Settle payout via VyreCasino
+        if (payout > 0) {
+            IVyreCasino(casino).settlePayout(player, token, payout);
+        }
     }
 
     // ==================== CARD LOGIC ====================
@@ -739,6 +803,107 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         pendingOwner = address(0);
     }
 
+    // ==================== UUPS ====================
+
+    /**
+     * @notice Authorize upgrade to new implementation
+     * @dev Only owner can upgrade the contract
+     */
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner { }
+
+    // ==================== VRF TIMEOUT HANDLING ====================
+
+    /// @notice Emitted when VRF request is retried
+    event VRFRetried(address indexed player, uint256 oldRequestId, uint256 newRequestId);
+
+    /// @notice Emitted when game is force resolved due to VRF timeout
+    event GameForceResolved(address indexed player, uint256 refundAmount);
+
+    /**
+     * @notice Retry VRF request if timed out
+     * @dev Can be called by player if VRF hasn't responded in VRF_TIMEOUT
+     */
+    function retryVRF() external {
+        Game storage game = games[msg.sender];
+        require(game.state != GameState.Idle, "VyreJackCore: no active game");
+        require(
+            game.state == GameState.WaitingForDeal || game.state == GameState.WaitingForHit
+                || game.state == GameState.WaitingForDouble || game.state == GameState.DealerTurn,
+            "VyreJackCore: not waiting for VRF"
+        );
+        require(
+            block.timestamp >= game.timestamp + VRF_TIMEOUT, "VyreJackCore: timeout not reached"
+        );
+
+        // Determine request type based on state
+        RequestType reqType;
+        uint256 numCards;
+
+        if (game.state == GameState.WaitingForDeal) {
+            reqType = RequestType.InitialDeal;
+            numCards = 4;
+        } else if (game.state == GameState.WaitingForHit) {
+            reqType = RequestType.PlayerHit;
+            numCards = 1;
+        } else if (game.state == GameState.WaitingForDouble) {
+            reqType = RequestType.PlayerDouble;
+            numCards = 1;
+        } else {
+            reqType = RequestType.DealerDraw;
+            numCards = 5; // Max dealer draw
+        }
+
+        // Update timestamp
+        game.timestamp = block.timestamp;
+
+        // Generate seed for retry
+        playerNonces[msg.sender]++;
+        uint256 seed = uint256(
+            keccak256(
+                abi.encodePacked(
+                    msg.sender, playerNonces[msg.sender], block.timestamp, block.prevrandao
+                )
+            )
+        );
+
+        // Request new VRF
+        uint256 newRequestId = coordinator.requestRandomNumbers(uint32(numCards), seed);
+        vrfRequests[newRequestId] =
+            VRFRequest({ player: msg.sender, requestType: reqType, fulfilled: false });
+
+        emit VRFRetried(msg.sender, 0, newRequestId);
+    }
+
+    /**
+     * @notice Force resolve game by refunding bet (admin emergency function)
+     * @dev Only owner can call. Use when VRF is permanently stuck.
+     * @param player Player address to resolve
+     */
+    function forceResolveGame(
+        address player
+    ) external onlyOwner {
+        Game storage game = games[player];
+        require(game.state != GameState.Idle, "VyreJackCore: no active game");
+        require(
+            block.timestamp >= game.timestamp + VRF_TIMEOUT, "VyreJackCore: timeout not reached"
+        );
+
+        address token = game.token;
+        uint256 bet = game.bet;
+
+        // Reset game
+        delete games[player];
+
+        // Refund bet via casino
+        if (bet > 0) {
+            IVyreCasino(casino).settlePayout(player, token, bet);
+        }
+
+        emit GameForceResolved(player, bet);
+    }
+
     // ==================== VIEW ====================
 
     function getGame(
@@ -756,5 +921,90 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     {
         Game storage game = games[player];
         return (game.token, game.bet, game.playerCards, game.dealerCards, game.state);
+    }
+
+    /**
+     * @notice Comprehensive game status for frontend (single call)
+     * @param player Player address
+     * @return state Current game state
+     * @return bet Bet amount
+     * @return token Bet token address
+     * @return playerCards Player's cards
+     * @return playerValue Player's hand value
+     * @return playerIsSoft Whether player hand is soft
+     * @return dealerVisibleCard Dealer's face-up card (0 if no game)
+     * @return canRetry Whether VRF retry is available
+     * @return vrfTimeoutAt Timestamp when VRF timeout triggers (0 if not waiting)
+     * @return isDoubled Whether player has doubled
+     */
+    function getGameStatus(
+        address player
+    )
+        external
+        view
+        returns (
+            GameState state,
+            uint256 bet,
+            address token,
+            uint8[] memory playerCards,
+            uint8 playerValue,
+            bool playerIsSoft,
+            uint8 dealerVisibleCard,
+            bool canRetry,
+            uint256 vrfTimeoutAt,
+            bool isDoubled
+        )
+    {
+        Game storage game = games[player];
+        state = game.state;
+        bet = game.bet;
+        token = game.token;
+        playerCards = game.playerCards;
+        isDoubled = game.isDoubled;
+
+        // Calculate player hand value
+        if (game.playerCards.length > 0) {
+            (playerValue, playerIsSoft) = calculateHandValue(game.playerCards);
+        }
+
+        // Get dealer visible card (first card is face-up)
+        if (game.dealerCards.length > 0) {
+            dealerVisibleCard = game.dealerCards[0];
+        }
+
+        // Check VRF retry status
+        bool isWaiting = state == GameState.WaitingForDeal || state == GameState.WaitingForHit
+            || state == GameState.WaitingForDouble || state == GameState.DealerTurn;
+
+        if (isWaiting) {
+            vrfTimeoutAt = game.timestamp + VRF_TIMEOUT;
+            canRetry = block.timestamp >= vrfTimeoutAt;
+        }
+    }
+
+    /**
+     * @notice Check if player can retry VRF
+     * @param player Player address
+     * @return canRetry Whether retry is available
+     * @return timeRemaining Seconds until retry available (0 if already available)
+     */
+    function canRetryVRF(
+        address player
+    ) external view returns (bool canRetry, uint256 timeRemaining) {
+        Game storage game = games[player];
+        if (game.state == GameState.Idle) return (false, 0);
+
+        bool isWaiting = game.state == GameState.WaitingForDeal
+            || game.state == GameState.WaitingForHit || game.state == GameState.WaitingForDouble
+            || game.state == GameState.DealerTurn;
+
+        if (!isWaiting) return (false, 0);
+
+        uint256 timeoutAt = game.timestamp + VRF_TIMEOUT;
+        if (block.timestamp >= timeoutAt) {
+            return (true, 0);
+        } else {
+            return (false, timeoutAt - block.timestamp);
+        }
     }
 }
