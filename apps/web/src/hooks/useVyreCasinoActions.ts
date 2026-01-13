@@ -387,6 +387,14 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
       setError(null);
 
       try {
+        // Step 0: Check if user has enough balance
+        const balanceState = await TokenService.getBalance(token, address);
+        if (balanceState.raw < betWei) {
+          const formattedBalance = formatUnits(balanceState.raw, decimals);
+          setError(`Insufficient balance. You have ${parseFloat(formattedBalance).toFixed(2)} ${isUSDC ? 'USDC' : 'CHIP'} but tried to bet ${betAmount}`);
+          return false;
+        }
+
         // Step 1: Check allowance via TokenService (cached)
         const allowanceState = await TokenService.getAllowance(token, address);
 
