@@ -184,9 +184,16 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
   // Handle GameResolved event from WebSocket (v4 contracts - real values!)
   const handleGameResolved = useCallback(
     (event: GameResolvedEvent) => {
-      // Deduplicate: create unique key from result + payout
-      const eventKey = `${event.result}-${event.payout.toString()}-${event.playerFinalValue}-${event.dealerFinalValue}`;
-      if (lastProcessedResultRef.current === eventKey) {
+      // Deduplicate: use timestamp since GamePlayed doesn't have unique values
+      // playerFinalValue and dealerFinalValue are always 0 from GamePlayed event
+      const eventKey = `${event.result}-${event.payout.toString()}-${Date.now()}`;
+      // Only check for rapid duplicates within 100ms window
+      const lastKey = lastProcessedResultRef.current;
+      const isDuplicate = lastKey &&
+        lastKey.startsWith(`${event.result}-${event.payout.toString()}-`) &&
+        Date.now() - parseInt(lastKey.split('-').pop() || '0') < 100;
+
+      if (isDuplicate) {
         logger.log('[GameStateCasino] Skipping duplicate GameResolved callback');
         return;
       }
