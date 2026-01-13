@@ -83,17 +83,26 @@ export function useTokenBalance(
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptRef = useRef(0);
   const isMountedRef = useRef(true);
+  const lastRefreshTimeRef = useRef(0);
+  const REFRESH_DEBOUNCE_MS = 500; // Minimum time between refreshes
 
   // Tab focus state
   const isActiveTab = useTabFocus();
 
-  // Fetch balance and allowance
+  // Fetch balance and allowance (with debounce)
   const refresh = useCallback(async () => {
     if (!token || !account) {
       setBalance(null);
       setAllowance(null);
       return;
     }
+
+    // Debounce: skip if called within REFRESH_DEBOUNCE_MS of last call
+    const now = Date.now();
+    if (now - lastRefreshTimeRef.current < REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+    lastRefreshTimeRef.current = now;
 
     // Only log on first fetch to reduce noise
     if (!hasFetchedRef.current) {

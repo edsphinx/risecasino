@@ -260,11 +260,14 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
         setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
         cardSnapshotRef.current = null;
 
-        // Refetch to update contract state
-        currentService.refetch();
-
         // Dispatch global event for wallet balance refresh
         window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
+
+        // DEFERRED: Refetch after overlay has time to display
+        // The overlay displays for ~5s, so we wait until user interaction or timeout
+        setTimeout(() => {
+          currentService.refetch();
+        }, 5000);
       }, 50); // 50ms delay - matches ETH version, Rise Chain is fast
     },
     [] // No dependencies - we use refs for current values

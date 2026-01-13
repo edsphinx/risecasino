@@ -35,7 +35,7 @@ export interface UseAssetBalancesReturn {
   refresh: () => Promise<void>;
 }
 
-const POLL_INTERVAL = 10000; // 10 seconds, same as useTokenBalance
+const POLL_INTERVAL = 60000; // 60s safety net (not aggressive)
 
 export function useAssetBalances(account: `0x${string}` | null): UseAssetBalancesReturn {
   const [assets, setAssets] = useState<AssetInfo[]>([]);
