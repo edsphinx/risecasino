@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect } from 'preact/hooks';
-import './XPPopup.css';
 
 interface XPPopupProps {
     xpAmount: number | null;

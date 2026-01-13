@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect } from 'preact/hooks';
-import './styles/xp-gain-popup.css';
 
 interface XPGainPopupProps {
   xpAmount: number;
