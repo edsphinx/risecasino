@@ -46,7 +46,7 @@ export function Hand({
     <div
       className={`hand-container ${getResultClass()} ${isDealer ? 'hand-dealer' : 'hand-player'}`}
     >
-      {/* Cards only - no value inside */}
+      {/* Cards with staggered entrance animation */}
       <div className="hand-cards">
         {cards.map((card, index) => (
           <div
@@ -57,7 +57,8 @@ export function Hand({
             <PlayingCard
               cardIndex={card}
               faceUp={!(isDealer && index === 1 && hideSecond)}
-              delay={index * 100}
+              delay={index * 150}
+              isNew={true}
             />
           </div>
         ))}

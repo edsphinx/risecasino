@@ -28,32 +28,32 @@ interface GameResultOverlayProps {
   onChangeBet: () => void;
 }
 
-// Result configurations with psychological messaging
+// Result configurations with DEGEN crypto messaging
 const RESULT_CONFIG = {
   blackjack: {
     title: 'BLACKJACK!',
-    subtitle: 'WAGMI! 💎',
+    subtitle: 'WAGMI! 💎🙌',
     emoji: '💎',
     class: 'result-blackjack',
     confetti: true,
   },
   win: {
-    title: 'YOU WIN!',
-    subtitle: 'LFG! 🚀',
+    title: 'LFG! YOU WIN!',
+    subtitle: '🚀 TO THE MOON',
     emoji: '🚀',
     class: 'result-win',
     confetti: true,
   },
   lose: {
-    title: 'DEALER WINS',
-    subtitle: '',
-    emoji: '😤',
+    title: 'NGMI',
+    subtitle: 'Dealer Wins',
+    emoji: '💀',
     class: 'result-lose',
     confetti: false,
   },
   push: {
     title: 'PUSH',
-    subtitle: 'Bet Returned',
+    subtitle: 'Bet Returned 🤝',
     emoji: '🤝',
     class: 'result-push',
     confetti: false,
@@ -108,8 +108,8 @@ export function GameResultOverlay({
 
   const nearMissMessage = getNearMissMessage();
 
-  // Quick bet options
-  const quickBets = ['0.50', '1', '5', '10'];
+  // Quick bet options - minimum is 1 USDC per contract
+  const quickBets = ['1', '2', '5', '10'];
 
   return (
     <div className={`result-overlay ${isVisible ? 'visible' : ''}`}>
@@ -119,16 +119,45 @@ export function GameResultOverlay({
       {/* Confetti layer */}
       {showConfetti && <div className="confetti-container" />}
 
-      {/* Main content */}
+      {/* Main content - WIDE for cards */}
       <div className={`result-content ${config.class}`}>
-        {/* Header */}
-        <div className="result-header">
+        {/* Header - INLINE: emoji + title + payout */}
+        <div className="result-header-inline">
           <span className="result-header-emoji">{config.emoji}</span>
           <h1 className="result-title">{config.title}</h1>
-          {config.subtitle && <p className="result-subtitle">{config.subtitle}</p>}
+          {isWin && payout && (
+            <span className="payout-inline">+${payout} {tokenSymbol}</span>
+          )}
         </div>
 
-        {/* Cards display */}
+        {config.subtitle && <p className="result-subtitle">{config.subtitle}</p>}
+
+        {/* Actions container - CENTERED, MAX WIDTH for proper button sizing */}
+        <div className="result-actions-container">
+          {/* Primary CTA */}
+          <button className="btn-play-again primary" onClick={() => onPlayAgain(bet)}>
+            <span className="btn-emoji">🎰</span>
+            <span>PLAY AGAIN ${bet}</span>
+          </button>
+
+          {/* Quick bets */}
+          <div className="quick-bets">
+            <span className="quick-bets-label">or change bet:</span>
+            <div className="quick-bets-row">
+              {quickBets.map((amount) => (
+                <button
+                  key={amount}
+                  className={`quick-bet-btn ${amount === bet ? 'active' : ''}`}
+                  onClick={() => onPlayAgain(amount)}
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Cards display - FULL WIDTH for many cards */}
         <div className="result-cards">
           <div className="result-hand dealer">
             <span className="hand-label">Dealer</span>
@@ -138,7 +167,6 @@ export function GameResultOverlay({
               isDealer
               result={result === 'lose' ? 'win' : null}
             />
-            <span className="hand-value">{dealerValue}</span>
           </div>
 
           <div className="result-vs">VS</div>
@@ -146,19 +174,8 @@ export function GameResultOverlay({
           <div className="result-hand player">
             <span className="hand-label">You</span>
             <Hand cards={playerCards} value={playerValue} result={result} />
-            <span className="hand-value">{playerValue}</span>
           </div>
         </div>
-
-        {/* Payout display (for wins) */}
-        {isWin && payout && (
-          <div className="result-payout">
-            <span className="payout-label">Won</span>
-            <span className="payout-amount">
-              +${payout} {tokenSymbol}
-            </span>
-          </div>
-        )}
 
         {/* Near miss message */}
         {nearMissMessage && <p className="result-near-miss">{nearMissMessage}</p>}
@@ -179,31 +196,10 @@ export function GameResultOverlay({
           )}
         </div>
 
-        {/* Action buttons */}
-        <div className="result-actions">
-          <button className="btn-play-again primary" onClick={() => onPlayAgain(bet)}>
-            <span className="btn-emoji">🎰</span>
-            <span>PLAY AGAIN ${bet}</span>
-          </button>
-
-          {/* Quick bet options */}
-          <div className="quick-bets">
-            <span className="quick-bets-label">or change bet:</span>
-            <div className="quick-bets-row">
-              {quickBets.map((amount) => (
-                <button
-                  key={amount}
-                  className={`quick-bet-btn ${amount === bet ? 'active' : ''}`}
-                  onClick={() => onPlayAgain(amount)}
-                >
-                  ${amount}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        {/* Back to table - centered */}
+        <div className="result-actions-container">
           <button className="btn-change-bet" onClick={onChangeBet}>
-            Back to table
+            ← Back to table
           </button>
         </div>
       </div>

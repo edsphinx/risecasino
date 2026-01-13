@@ -1,15 +1,23 @@
 require("@nomicfoundation/hardhat-verify");
+require("@nomicfoundation/hardhat-ethers");
+require("dotenv").config();
 
 /**
  * Hardhat Configuration for Rise Casino
  * 
- * PURPOSE: This config is ONLY used for contract verification on Blockscout.
- * All development, testing, and deployment is done with Foundry.
+ * PURPOSE: 
+ * - Contract verification on Blockscout
+ * - E2E tests against Rise Testnet (real transactions)
  * 
- * viaIR is ENABLED here to match the Foundry CI profile settings,
- * ensuring bytecode matches for verification of complex contracts
- * like RiseCasinoRouter that require IR optimization.
+ * E2E Tests: npx hardhat test test/e2e/*.ts --network rise
  */
+
+// Load private keys from .env (optional for verification-only)
+const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "";
+const SECOND_SIGNER_PRIVATE_KEY = process.env.SECOND_SIGNER_PRIVATE_KEY || "";
+
+// Only add accounts if keys are provided
+const accounts = [SECOND_SIGNER_PRIVATE_KEY, DEPLOYER_PRIVATE_KEY].filter(k => k && k.length > 0);
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -29,6 +37,11 @@ module.exports = {
         rise: {
             url: "https://testnet.riselabs.xyz",
             chainId: 11155931,
+            accounts: accounts.length > 0 ? accounts : undefined,
+            timeout: 120000, // 2 minutes for VRF callbacks
+        },
+        localhost: {
+            url: "http://127.0.0.1:8545",
         },
     },
     sourcify: {
@@ -51,5 +64,12 @@ module.exports = {
     },
     paths: {
         sources: "./src",
+        tests: "./test",
+        cache: "./cache",
+        artifacts: "./artifacts",
+    },
+    mocha: {
+        timeout: 180000, // 3 minutes for E2E tests with VRF
     },
 };
+

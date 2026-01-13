@@ -2,25 +2,20 @@
 
 .casino-table {
   position: relative;
-  background: linear-gradient(
-    180deg,
-    #1a5c35 0%,
-    #166534 30%,
-    #15803d 50%,
-    #166534 70%,
-    #1a5c35 100%
-  );
+  background: linear-gradient(180deg,
+      #1a5c35 0%,
+      #166534 30%,
+      #15803d 50%,
+      #166534 70%,
+      #1a5c35 100%);
   border-radius: 1rem;
   border: 10px solid;
-  border-image: linear-gradient(
-      180deg,
+  border-image: linear-gradient(180deg,
       #92400e 0%,
       #b45309 30%,
       #d97706 50%,
       #b45309 70%,
-      #92400e 100%
-    )
-    1;
+      #92400e 100%) 1;
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.5),
     inset 0 0 100px rgba(0, 0, 0, 0.3);
@@ -50,7 +45,70 @@
   pointer-events: none;
 }
 
-/* Dealer zone */
+/* ==================== CASINO LIGHTS - DEALING ANTICIPATION ==================== */
+/* Animated border glow when waiting for cards */
+
+.casino-table.dealing-anticipation {
+  animation: casinoLights 1.2s ease-in-out infinite;
+}
+
+/* Enhanced border glow animation */
+@keyframes casinoLights {
+
+  0%,
+  100% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3),
+      0 0 30px rgba(139, 92, 246, 0.3),
+      inset 0 0 20px rgba(139, 92, 246, 0.1);
+  }
+
+  25% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3),
+      0 0 50px rgba(236, 72, 153, 0.4),
+      inset 0 0 30px rgba(236, 72, 153, 0.15);
+  }
+
+  50% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3),
+      0 0 60px rgba(59, 130, 246, 0.5),
+      inset 0 0 40px rgba(59, 130, 246, 0.2);
+  }
+
+  75% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3),
+      0 0 50px rgba(16, 185, 129, 0.4),
+      inset 0 0 30px rgba(16, 185, 129, 0.15);
+  }
+}
+
+/* Transition when dealing ends */
+.casino-table.dealing-complete {
+  animation: lightsOff 0.5s ease-out forwards;
+}
+
+@keyframes lightsOff {
+  0% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3),
+      0 0 40px rgba(139, 92, 246, 0.4);
+  }
+
+  100% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 0 100px rgba(0, 0, 0, 0.3);
+  }
+}
+
 .dealer-zone {
   display: flex;
   flex-direction: column;
@@ -290,6 +348,7 @@
 }
 
 @keyframes ultra-blackjack-pulse {
+
   0%,
   100% {
     box-shadow:
@@ -313,6 +372,7 @@
 }
 
 @keyframes lose-shake {
+
   0%,
   100% {
     transform: translateX(0);
@@ -360,6 +420,7 @@
 }
 
 @keyframes bust-shake {
+
   0%,
   100% {
     transform: translateX(0);
@@ -543,6 +604,7 @@
 }
 
 @keyframes win-glow {
+
   0%,
   100% {
     box-shadow:
@@ -564,6 +626,7 @@
 }
 
 @keyframes table-shake {
+
   0%,
   100% {
     transform: translateX(0);
@@ -706,6 +769,7 @@
 
 /* Mobile: OPTIMIZED layout - fits all elements in viewport */
 @media (max-width: 640px) {
+
   /* Main game container - fill viewport minus header (40px) */
   .game-board-mobile {
     min-height: calc(100dvh - 40px) !important;
@@ -716,7 +780,7 @@
     overflow: hidden;
   }
 
-  .game-board-mobile > main {
+  .game-board-mobile>main {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -725,7 +789,7 @@
     margin: 0 !important;
   }
 
-  .game-board-mobile > main > .space-y-4 {
+  .game-board-mobile>main>.space-y-4 {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -930,8 +994,8 @@
     gap: 0.35rem !important;
   }
 
-  .controls-panel .space-y-3 > *,
-  .controls-panel .space-y-4 > * {
+  .controls-panel .space-y-3>*,
+  .controls-panel .space-y-4>* {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
   }

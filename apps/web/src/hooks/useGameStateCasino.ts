@@ -271,6 +271,9 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
 
         // Refetch to update contract state
         currentService.refetch();
+
+        // Dispatch global event for wallet balance refresh
+        window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
       }, 50); // 50ms delay - matches ETH version, Rise Chain is fast
     },
     [] // No dependencies - we use refs for current values

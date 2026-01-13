@@ -38,16 +38,15 @@
   position: absolute;
   inset: 0;
   border-radius: 8px;
-  background: linear-gradient(
-    135deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.1) 50%,
-    transparent 60%
-  );
+  background: linear-gradient(135deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 60%);
   animation: deck-shimmer 3s ease-in-out infinite;
 }
 
 @keyframes deck-shimmer {
+
   0%,
   100% {
     opacity: 0;
@@ -70,20 +69,68 @@
   text-transform: uppercase;
 }
 
-/* Deal animation - card flies out */
-.card-deck.dealing .deck-card:last-child {
-  animation: deal-card 0.4s ease-out forwards;
+/* ==================== DEALING STATE ANIMATIONS ==================== */
+/* When waiting for WebSocket - anticipation effect */
+
+.card-deck.dealing {
+  animation: deck-anticipation 0.8s ease-in-out infinite;
 }
 
-@keyframes deal-card {
-  0% {
-    opacity: 1;
-    transform: translateY(calc(var(--card-index, 0) * -2px));
+/* Glow when dealing */
+.card-deck.dealing::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 12px;
+  background: radial-gradient(ellipse, rgba(139, 92, 246, 0.4) 0%, transparent 70%);
+  animation: deck-glow 0.8s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes deck-anticipation {
+
+  0%,
+  100% {
+    transform: translateY(-50%) scale(1);
   }
 
+  50% {
+    transform: translateY(-50%) scale(1.03);
+  }
+}
+
+@keyframes deck-glow {
+
+  0%,
   100% {
-    opacity: 0;
-    transform: translateY(-30px) translateX(100px) rotate(10deg);
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* Top card wiggles */
+.card-deck.dealing .deck-card:last-child {
+  animation: card-wiggle 0.4s ease-in-out infinite;
+}
+
+@keyframes card-wiggle {
+
+  0%,
+  100% {
+    transform: translateY(calc(var(--card-index, 0) * -2px)) rotate(0deg);
+  }
+
+  25% {
+    transform: translateY(calc(var(--card-index, 0) * -2px - 3px)) rotate(-1deg);
+  }
+
+  75% {
+    transform: translateY(calc(var(--card-index, 0) * -2px - 3px)) rotate(1deg);
   }
 }
 
