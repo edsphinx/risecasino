@@ -92,25 +92,15 @@ export function useGameEventsCasino(
 
       // Watch for GamePlayed events (V6 - actual event emitted by contract)
       // Note: Contract emits IVyreGame.GamePlayed, NOT GameResolved
+      // Don't filter by player in subscription - filter in callback for reliability
       const unwatchGamePlayed = client.watchContractEvent({
         address: VYREJACKCORE_ADDRESS,
         abi: VYREJACKCORE_ABI,
         eventName: 'GamePlayed',
-        args: {
-          player: playerAddress,
-        },
         onLogs: (logs) => {
-          logger.log('[GameEventsCasino] GamePlayed events:', logs.length);
+          logger.log('[GameEventsCasino] GamePlayed ALL events:', logs.length);
 
           for (const log of logs) {
-            // Deduplicate: skip if already processed
-            const eventKey = `${log.transactionHash}-${log.logIndex}`;
-            if (processedEvents.current.has(eventKey)) {
-              logger.log('[GameEventsCasino] Skipping duplicate GamePlayed:', eventKey);
-              continue;
-            }
-            processedEvents.current.add(eventKey);
-
             // GamePlayed signature: (player, token, bet, won, payout)
             const args = log.args as {
               player: `0x${string}`;
@@ -120,13 +110,27 @@ export function useGameEventsCasino(
               payout: bigint;
             };
 
+            // Filter by player in callback (more reliable than topic filter)
+            if (args.player?.toLowerCase() !== playerAddress?.toLowerCase()) {
+              logger.log('[GameEventsCasino] GamePlayed for other player:', args.player);
+              continue;
+            }
+
+            // Deduplicate: skip if already processed
+            const eventKey = `${log.transactionHash}-${log.logIndex}`;
+            if (processedEvents.current.has(eventKey)) {
+              logger.log('[GameEventsCasino] Skipping duplicate GamePlayed:', eventKey);
+              continue;
+            }
+            processedEvents.current.add(eventKey);
+
             // Map 'won' boolean to GameResult
             // Note: GamePlayed doesn't distinguish blackjack from regular win
             const gameResult: GameResult = args.won
               ? (args.payout > args.bet * 2n ? 'blackjack' : 'win')
               : (args.payout === args.bet ? 'push' : 'lose');
 
-            logger.log('[GameEventsCasino] GamePlayed:', {
+            logger.log('[GameEventsCasino] GamePlayed for US:', {
               result: gameResult,
               won: args.won,
               bet: args.bet.toString(),
