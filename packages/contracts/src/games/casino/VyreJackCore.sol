@@ -17,6 +17,8 @@ import { IVyreGame } from "../../interfaces/IVyreGame.sol";
 import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
 import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title  VyreJackCore
@@ -35,7 +37,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *           async callback pattern for cryptographic security.
  *         - Access Control: Only VyreCasino can call play(), only VRF can callback.
  */
-contract VyreJackCore is IVyreGame, IVRFConsumer {
+contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable {
     // ----------------------------------------------------------------------
     //  CONSTANTS
     // ----------------------------------------------------------------------
@@ -75,8 +77,8 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     //  STORAGE
     // ----------------------------------------------------------------------
 
-    /// @notice VRF Coordinator for randomness
-    IVRFCoordinator public immutable coordinator;
+    /// @notice VRF Coordinator for randomness (not immutable for upgradeability)
+    IVRFCoordinator public coordinator;
 
     /// @notice Address of VyreCasino contract (only caller for play())
     address public casino;
@@ -144,6 +146,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         WaitingForDeal, // Awaiting initial 4 cards from VRF
         PlayerTurn, // Player can hit/stand/double
         WaitingForHit, // Awaiting hit card from VRF
+        WaitingForDouble, // Awaiting double card from VRF
         DealerTurn, // Dealer is drawing
         PlayerWin, // Player won
         DealerWin, // Dealer won
@@ -155,6 +158,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     enum RequestType {
         InitialDeal, // 4 cards for initial deal
         PlayerHit, // 1 card for player hit
+        PlayerDouble, // 1 card for double down (then auto-stand)
         DealerDraw // N cards for dealer draw
     }
 
@@ -236,18 +240,26 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
     }
 
     // ----------------------------------------------------------------------
-    // ░░  CONSTRUCTOR
+    // ░░  INITIALIZER (UUPS Pattern - replaces constructor)
     // ----------------------------------------------------------------------
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
-     * @notice Deploys VyreJackCore with VRF and Casino configuration.
+     * @notice Initializes VyreJackCore with VRF and Casino configuration.
+     * @dev Can only be called once via proxy. Use reinitialize() for upgrades.
      * @param _vrfCoordinator Address of VRF Coordinator (use address(0) for Rise testnet default)
      * @param _casino Address of VyreCasino contract that will call play()
      */
-    constructor(
+    function initialize(
         address _vrfCoordinator,
         address _casino
-    ) {
+    ) external initializer {
+        __UUPSUpgradeable_init();
+        
         if (_vrfCoordinator == address(0)) {
             coordinator = IVRFCoordinator(DEFAULT_VRF_COORDINATOR);
         } else {
@@ -255,6 +267,18 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         }
         casino = _casino;
         owner = msg.sender;
+        active = true;
+        defaultMinBet = 1e18;
+        defaultMaxBet = 1000e18;
+    }
+
+    /**
+     * @notice Reinitializer for V2 upgrades
+     * @dev Call this after upgrading to initialize new V2 state
+     */
+    function reinitializeV2() external reinitializer(2) {
+        // V2 initialization logic goes here
+        // Currently empty - add new state initialization as needed
     }
 
     // ==================== IVyreGame IMPLEMENTATION ====================
@@ -347,6 +371,8 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
             _handleInitialDeal(player, randomNumbers);
         } else if (request.requestType == RequestType.PlayerHit) {
             _handlePlayerHit(player, randomNumbers);
+        } else if (request.requestType == RequestType.PlayerDouble) {
+            _handlePlayerDouble(player, randomNumbers);
         } else if (request.requestType == RequestType.DealerDraw) {
             _handleDealerDraw(player, randomNumbers);
         }
@@ -375,6 +401,47 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         require(games[msg.sender].state == GameState.PlayerTurn, "VyreJackCore: not your turn");
         emit PlayerAction(msg.sender, "stand");
         _playDealer(msg.sender);
+    }
+
+    /// @notice Double down - double bet, take exactly one card, then stand
+    /// @dev Can only be called on initial 2-card hand
+    function double() external {
+        Game storage game = games[msg.sender];
+        require(game.state == GameState.PlayerTurn, "VyreJackCore: not your turn");
+        require(game.playerCards.length == 2, "VyreJackCore: can only double on initial hand");
+        require(!game.isDoubled, "VyreJackCore: already doubled");
+
+        // Mark as doubled - the bet will be doubled when resolving
+        game.isDoubled = true;
+        game.state = GameState.WaitingForDouble;
+
+        emit PlayerAction(msg.sender, "double");
+
+        // Request one card, then auto-stand
+        uint256 nonce = playerNonces[msg.sender]++;
+        uint256 seed = uint256(keccak256(abi.encode(msg.sender, block.timestamp, "double", nonce)));
+        uint256 requestId = coordinator.requestRandomNumbers(1, seed);
+
+        vrfRequests[requestId] = VRFRequest({
+            player: msg.sender, requestType: RequestType.PlayerDouble, fulfilled: false
+        });
+
+        emit VRFRequested(msg.sender, requestId, RequestType.PlayerDouble);
+    }
+
+    /// @notice Surrender - forfeit the hand and get half the bet back
+    /// @dev Can only be called on initial 2-card hand (late surrender)
+    function surrender() external {
+        Game storage game = games[msg.sender];
+        require(game.state == GameState.PlayerTurn, "VyreJackCore: not your turn");
+        require(game.playerCards.length == 2, "VyreJackCore: can only surrender on initial hand");
+
+        emit PlayerAction(msg.sender, "surrender");
+
+        // Return half the bet (effective bet if doubled, though you can't double then surrender)
+        uint256 returnAmount = game.bet / 2;
+        
+        _finishGame(msg.sender, GameState.DealerWin, returnAmount);
     }
 
     // ==================== INTERNAL LOGIC ====================
@@ -440,6 +507,32 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
             _playDealer(player);
         } else {
             game.state = GameState.PlayerTurn;
+        }
+    }
+
+    /// @notice Handle double down card - take one card then auto-stand to dealer
+    function _handlePlayerDouble(
+        address player,
+        uint256[] memory randomNumbers
+    ) internal {
+        require(randomNumbers.length >= 1, "Need 1 random number");
+
+        Game storage game = games[player];
+        uint8 newCard = _randomToCard(randomNumbers[0]);
+        game.playerCards.push(newCard);
+
+        emit CardDealt(player, newCard, false, true);
+
+        (uint8 playerValue,) = calculateHandValue(game.playerCards);
+        emit HandValue(player, playerValue, false, false);
+
+        // After double, always go to dealer (auto-stand)
+        if (playerValue > 21) {
+            // Busted on double - lose double the bet
+            _finishGame(player, GameState.DealerWin, 0);
+        } else {
+            // Auto-stand after double
+            _playDealer(player);
         }
     }
 
@@ -536,21 +629,24 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         (uint8 playerValue,) = calculateHandValue(game.playerCards);
         (uint8 dealerValue,) = calculateHandValue(game.dealerCards);
 
+        // Effective bet is doubled if player doubled down
+        uint256 effectiveBet = game.isDoubled ? game.bet * 2 : game.bet;
+
         uint256 payout = 0;
         GameState result;
 
         if (dealerValue > 21) {
             result = GameState.PlayerWin;
-            payout = game.bet * 2;
+            payout = effectiveBet * 2;
         } else if (playerValue > dealerValue) {
             result = GameState.PlayerWin;
-            payout = game.bet * 2;
+            payout = effectiveBet * 2;
         } else if (dealerValue > playerValue) {
             result = GameState.DealerWin;
             payout = 0;
         } else {
             result = GameState.Push;
-            payout = game.bet;
+            payout = effectiveBet; // Return the effective bet on push
         }
 
         _finishGame(player, result, payout);
@@ -664,6 +760,17 @@ contract VyreJackCore is IVyreGame, IVRFConsumer {
         emit OwnershipTransferred(owner, pendingOwner);
         owner = pendingOwner;
         pendingOwner = address(0);
+    }
+
+    // ==================== UUPS UPGRADE ====================
+
+    /**
+     * @notice Authorizes contract upgrades (required by UUPS)
+     * @dev Only owner can authorize upgrades
+     * @param newImplementation Address of the new implementation contract
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        // Owner authorization is the only check needed
     }
 
     // ==================== VIEW ====================

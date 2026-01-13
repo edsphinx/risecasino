@@ -11,6 +11,8 @@
     "test:invariant": "forge test --match-contract Invariant -vvv",
     "test:fuzz": "forge test --match-test 'testFuzz' -vvv",
     "test:fork": "forge test --fork-url https://testnet.riselabs.xyz -vvv",
+    "test:e2e": "npx hardhat test test/e2e/*.ts --network rise",
+    "test:e2e:foundry": "forge test --match-contract VyreCasinoE2E --fork-url https://testnet.riselabs.xyz -vvv",
     "test:fork:amm": "forge test --fork-url https://testnet.riselabs.xyz --match-path 'test/amm/**' -vvv",
     "coverage": "forge coverage",
     "coverage:defi": "forge coverage --match-path 'src/defi/**'",
@@ -34,10 +36,19 @@
     "typecheck": "echo 'No TypeScript in contracts'"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
     "@openzeppelin/contracts": "^5.4.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "chai": "^4.3.0",
+    "dotenv": "^16.0.0",
+    "ethers": "^6.0.0",
     "hardhat": "^2.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "viem": "^2.44.0"
   }
 }

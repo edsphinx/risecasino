@@ -161,6 +161,16 @@ export async function createSessionKey(
 ): Promise<SessionKeyData> {
   if (!walletAddress) throw new Error('Wallet address required');
 
+  // IMPORTANT: Clear any existing session key FIRST to avoid relay conflicts
+  // This prevents "duplicate call" errors when the relay has cached the old publicKey
+  const existingKey = getActiveSessionKey(walletAddress);
+  if (existingKey) {
+    logger.log('🔑 [Session] Clearing existing session key before creating new one');
+    const storageKey = getStorageKey(walletAddress);
+    localStorage.removeItem(storageKey);
+    activeKeyPair = null;
+  }
+
   const provider = getProvider();
   if (!provider) throw new Error('Wallet provider not available');
 

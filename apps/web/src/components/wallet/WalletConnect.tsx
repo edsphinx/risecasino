@@ -47,6 +47,13 @@ export function WalletConnect({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Refresh balance when dropdown opens (so user sees latest)
+  useEffect(() => {
+    if (dropdownOpen) {
+      refreshAssets();
+    }
+  }, [dropdownOpen, refreshAssets]);
+
   // Event handlers
   const handleCopyAddress = async () => {
     if (!account) return;

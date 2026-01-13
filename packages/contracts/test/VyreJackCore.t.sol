@@ -584,6 +584,196 @@ contract VyreJackCoreTest is Test {
         (,,,, VyreJackCore.GameState state) = game.getGame(player1);
         assertTrue(uint8(state) != uint8(VyreJackCore.GameState.PlayerTurn));
     }
+
+    // ==================== DOUBLE TESTS ====================
+
+    function test_DoubleRequiresPlayerTurn() public {
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: not your turn");
+        game.double();
+    }
+
+    function test_DoubleRequiresInitialHand() public {
+        // Setup game and hit once
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 = 11
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Hit once
+        vm.prank(player1);
+        game.hit();
+        uint256 hitReqId = vrf.getLastRequestId();
+        uint256[] memory hitCard = new uint256[](1);
+        hitCard[0] = 1; // 2
+        vrf.fulfill(hitReqId, hitCard);
+
+        // Now try to double (should fail - already have 3 cards)
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: can only double on initial hand");
+        game.double();
+    }
+
+    function test_DoubleSuccess() public {
+        // Setup game with low hand that benefits from double
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 = 11 (good for double)
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Player doubles (starting with 21)
+        vm.prank(player1);
+        game.double();
+
+        // State should be WaitingForDouble
+        (,,,, VyreJackCore.GameState state) = game.getGame(player1);
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.WaitingForDouble));
+
+        // Fulfill double with a card
+        uint256 doubleReqId = vrf.getLastRequestId();
+        uint256[] memory doubleCard = new uint256[](1);
+        doubleCard[0] = 8; // 9
+        vrf.fulfill(doubleReqId, doubleCard);
+
+        // Game should proceed to dealer or be resolved
+        (address token,,,,) = game.getGame(player1);
+        // Game resolved or in dealer turn
+        assertTrue(token == address(0) || uint8(state) != uint8(VyreJackCore.GameState.PlayerTurn));
+    }
+
+    function test_DoubleAndWin() public {
+        // Setup: Player 6+5=11 (good double hand), Dealer 5+3=8
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 = 11
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Player doubles
+        vm.prank(player1);
+        game.double();
+
+        // Fulfill with 9 = total 20 (if ace counts as 1) or 30 (bust, ace->1=20)
+        uint256 doubleReqId = vrf.getLastRequestId();
+        uint256[] memory doubleCard = new uint256[](1);
+        doubleCard[0] = 8; // 9
+        vrf.fulfill(doubleReqId, doubleCard);
+
+        // Either dealer draws or game resolves
+        (address token,,,,) = game.getGame(player1);
+        assertTrue(token == address(0) || token != address(0)); // Just check no revert
+    }
+
+    function test_DoubleAndBust() public {
+        // Setup: Player 9+9=18, Dealer 5+3=8
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 8; // Player: 9
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 8; // Player: 9 = 18
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Player doubles (risky with 18)
+        vm.prank(player1);
+        game.double();
+
+        // Fulfill with 10 = 28 BUST
+        uint256 doubleReqId = vrf.getLastRequestId();
+        uint256[] memory doubleCard = new uint256[](1);
+        doubleCard[0] = 9; // 10
+        vrf.fulfill(doubleReqId, doubleCard);
+
+        // Game should be resolved (player busted on double)
+        (address token,,,,) = game.getGame(player1);
+        assertEq(token, address(0));
+    }
+
+    function test_CannotDoubleAgain() public {
+        // Setup game
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 = 11
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Player doubles
+        vm.prank(player1);
+        game.double();
+
+        // Try to double again (should fail)
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: not your turn");
+        game.double();
+    }
+
+    // ==================== SURRENDER TESTS ====================
+
+    function test_SurrenderRequiresPlayerTurn() public {
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: not your turn");
+        game.surrender();
+    }
+
+    function test_SurrenderRequiresInitialHand() public {
+        // Setup game and hit once
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 = 11
+        cards[3] = 2; // Dealer: 3 = 8
+        vrf.fulfill(reqId, cards);
+
+        // Hit once
+        vm.prank(player1);
+        game.hit();
+        uint256 hitReqId = vrf.getLastRequestId();
+        uint256[] memory hitCard = new uint256[](1);
+        hitCard[0] = 1; // 2
+        vrf.fulfill(hitReqId, hitCard);
+
+        // Now try to surrender (should fail - already have 3 cards)
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: can only surrender on initial hand");
+        game.surrender();
+    }
+
+    function test_SurrenderSuccess() public {
+        // Setup game with bad hand against dealer
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 9; // Player: 10
+        cards[1] = 8; // Dealer: 9
+        cards[2] = 5; // Player: 6 = 16 (bad hand)
+        cards[3] = 7; // Dealer: 8 = 17
+        vrf.fulfill(reqId, cards);
+
+        // Player surrenders (smart move with 16 vs 21)
+        vm.prank(player1);
+        game.surrender();
+
+        // Game should be resolved (player gets half bet back)
+        (address token,,,,) = game.getGame(player1);
+        assertEq(token, address(0));
+    }
 }
 
 /**

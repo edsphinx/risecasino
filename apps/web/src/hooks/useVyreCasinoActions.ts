@@ -32,7 +32,7 @@ import { logEvent } from '@/lib/api';
 // TYPES
 // =============================================================================
 
-type GameActionName = 'hit' | 'stand' | 'double';
+type GameActionName = 'hit' | 'stand' | 'double' | 'surrender';
 
 export interface UseVyreCasinoActionsReturn {
   isLoading: boolean;
@@ -45,6 +45,7 @@ export interface UseVyreCasinoActionsReturn {
   hit: () => Promise<boolean>;
   stand: () => Promise<boolean>;
   double: () => Promise<boolean>;
+  surrender: () => Promise<boolean>;
   // Utils
   formatChip: (value: bigint) => string;
 }
@@ -406,7 +407,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         }
 
         logger.log('[VyreCasino] Play TX:', txHash);
-        logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => {});
+        logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => { });
 
         await new Promise((r) => setTimeout(r, 100));
         onSuccess?.();
@@ -445,7 +446,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         }
 
         logger.log(`[VyreCasino] ${action} TX:`, txHash);
-        logEvent('game_action', address, { action }).catch(() => {});
+        logEvent('game_action', address, { action }).catch(() => { });
 
         await new Promise((r) => setTimeout(r, 100));
         onSuccess?.();
@@ -464,6 +465,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
   const hit = useCallback(() => executeGameAction('hit'), [executeGameAction]);
   const stand = useCallback(() => executeGameAction('stand'), [executeGameAction]);
   const double = useCallback(() => executeGameAction('double'), [executeGameAction]);
+  const surrender = useCallback(() => executeGameAction('surrender'), [executeGameAction]);
 
   const formatChip = useCallback((value: bigint): string => formatUnits(value, 18), []);
 
@@ -476,6 +478,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
     hit,
     stand,
     double,
+    surrender,
     formatChip,
   };
 }

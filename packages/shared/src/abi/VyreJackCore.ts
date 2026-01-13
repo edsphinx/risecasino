@@ -1029,6 +1029,20 @@ export const VYREJACKCORE_ABI = [
     type: 'function',
   },
   {
+    inputs: [],
+    name: 'double',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'surrender',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
     inputs: [
       {
         internalType: 'address',

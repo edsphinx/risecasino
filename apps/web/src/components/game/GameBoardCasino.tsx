@@ -31,6 +31,7 @@ import { XPGainPopup } from './XPGainPopup';
 import { GameResultOverlay } from './GameResultOverlay';
 import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
+import { SkeletonHand } from './SkeletonHand';
 import { logger } from '@/lib/logger';
 import './styles/casino-table.css';
 import './styles/action-buttons.css';
@@ -144,6 +145,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     actions.double();
   }, [actions, snapshotCards]);
 
+  const handleSurrender = useCallback(() => {
+    snapshotCards();
+    actions.surrender();
+  }, [actions, snapshotCards]);
+
   const handleNewGame = useCallback(() => {
     clearLastResult();
     refreshBalance();
@@ -189,7 +195,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   };
 
   return (
-    <div className="min-h-screen game-board-mobile bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
+    <div className="game-board-mobile bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
       <main className="max-w-6xl mx-auto p-2 sm:p-4 py-4 sm:py-8">
         {/* Error Display */}
         {actions.error && (
@@ -209,7 +215,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
         <div className="space-y-4 sm:space-y-6 md:space-y-8">
           {/* Casino Table with effects */}
           <div
-            className={`casino-table ${displayResult === 'blackjack' ? 'blackjack-glow' : ''} ${displayResult === 'lose' ? 'lose-shake' : ''} ${displayResult === 'lose' && displayPlayerValue && displayPlayerValue > 21 ? 'bust' : ''}`}
+            className={`casino-table ${actions.isLoading && displayPlayerCards.length === 0 ? 'dealing-anticipation' : ''} ${displayPlayerCards.length > 0 && !actions.isLoading ? 'dealing-complete' : ''} ${displayResult === 'blackjack' ? 'blackjack-glow' : ''} ${displayResult === 'lose' ? 'lose-shake' : ''} ${displayResult === 'lose' && displayPlayerValue && displayPlayerValue > 21 ? 'bust' : ''}`}
           >
             {/* Win celebration overlay */}
             {(displayResult === 'win' || displayResult === 'blackjack') && (
@@ -222,8 +228,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             {/* Loss flash overlay */}
             {displayResult === 'lose' && <div className="lose-flash" />}
 
-            {/* Card Deck - LEFT side */}
-            <CardDeck cardsDealt={displayPlayerCards.length + displayDealerCards.length} />
+            {/* Card Deck - LEFT side - animates when waiting */}
+            <CardDeck
+              isDealing={actions.isLoading}
+              cardsDealt={displayPlayerCards.length + displayDealerCards.length}
+            />
 
             {/* Play Area */}
             <div className="relative z-10 px-2 sm:px-8 md:px-28 py-4 sm:py-6 md:py-10">
@@ -242,6 +251,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         result={displayResult === 'lose' ? 'win' : null}
                         hideValue
                       />
+                    ) : actions.isLoading ? (
+                      <SkeletonHand cardCount={2} isDealer />
                     ) : (
                       <span className="play-zone-empty">Deal to start</span>
                     )}
@@ -266,6 +277,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         result={displayResult}
                         hideValue
                       />
+                    ) : actions.isLoading ? (
+                      <SkeletonHand cardCount={2} />
                     ) : (
                       <span className="play-zone-empty">Your cards</span>
                     )}
@@ -320,9 +333,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     onHit={handleHit}
                     onStand={handleStand}
                     onDouble={handleDouble}
-                    onSurrender={() => {}}
+                    onSurrender={handleSurrender}
                     canDouble={game?.playerCards.length === 2}
-                    canSurrender={false}
+                    canSurrender={game?.playerCards.length === 2}
                     isLoading={actions.isLoading}
                   />
                 ) : hasActiveGame ? (
@@ -374,8 +387,10 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
           onPlayAgain={(newBet) => {
+            // Clear previous result and start new game with selected bet
+            clearLastResult();
             setBetAmount(newBet);
-            handleNewGame();
+            actions.placeBet(newBet, token);
           }}
           onChangeBet={handleNewGame}
         />
