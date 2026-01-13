@@ -19,17 +19,6 @@ import type { GameResult } from '@vyrejack/shared';
 // Rise Chain Testnet WebSocket URL
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
 
-// GameState enum mapping from contract - V6 VALUES!
-// Must match VyreJackCore.sol GameState enum exactly:
-// Idle=0, WaitingForDeal=1, PlayerTurn=2, WaitingForHit=3, PlayerWin=4,
-// DealerWin=5, Push=6, PlayerBlackjack=7, DealerTurn=8
-const GAME_STATE_TO_RESULT: Record<number, GameResult> = {
-  4: 'win', // PlayerWin
-  5: 'lose', // DealerWin
-  6: 'push', // Push
-  7: 'blackjack', // PlayerBlackjack
-};
-
 export interface GameResolvedEvent {
   result: GameResult;
   payout: bigint;
@@ -101,56 +90,64 @@ export function useGameEventsCasino(
       });
       clientRef.current = client;
 
-      // Watch for GameResolved events (v4 - now properly emitted!)
-      const unwatchGameResolved = client.watchContractEvent({
+      // Watch for GamePlayed events (V6 - actual event emitted by contract)
+      // Note: Contract emits IVyreGame.GamePlayed, NOT GameResolved
+      const unwatchGamePlayed = client.watchContractEvent({
         address: VYREJACKCORE_ADDRESS,
         abi: VYREJACKCORE_ABI,
-        eventName: 'GameResolved',
+        eventName: 'GamePlayed',
         args: {
           player: playerAddress,
         },
         onLogs: (logs) => {
-          logger.log('[GameEventsCasino] GameResolved events:', logs.length);
+          logger.log('[GameEventsCasino] GamePlayed events:', logs.length);
 
           for (const log of logs) {
             // Deduplicate: skip if already processed
             const eventKey = `${log.transactionHash}-${log.logIndex}`;
             if (processedEvents.current.has(eventKey)) {
-              logger.log('[GameEventsCasino] Skipping duplicate GameResolved:', eventKey);
+              logger.log('[GameEventsCasino] Skipping duplicate GamePlayed:', eventKey);
               continue;
             }
             processedEvents.current.add(eventKey);
 
+            // GamePlayed signature: (player, token, bet, won, payout)
             const args = log.args as {
               player: `0x${string}`;
-              result: number;
+              token: `0x${string}`;
+              bet: bigint;
+              won: boolean;
               payout: bigint;
-              playerFinalValue: number;
-              dealerFinalValue: number;
             };
 
-            const gameResult = GAME_STATE_TO_RESULT[args.result] || 'lose';
+            // Map 'won' boolean to GameResult
+            // Note: GamePlayed doesn't distinguish blackjack from regular win
+            const gameResult: GameResult = args.won
+              ? (args.payout > args.bet * 2n ? 'blackjack' : 'win')
+              : (args.payout === args.bet ? 'push' : 'lose');
 
-            logger.log('[GameEventsCasino] GameResolved:', {
+            logger.log('[GameEventsCasino] GamePlayed:', {
               result: gameResult,
+              won: args.won,
+              bet: args.bet.toString(),
               payout: args.payout.toString(),
-              playerValue: args.playerFinalValue,
-              dealerValue: args.dealerFinalValue,
             });
 
+            // Note: playerFinalValue and dealerFinalValue are not in GamePlayed event
+            // They will be calculated from accumulated CardDealt events in useGameStateCasino
             callbacksRef.current.onGameResolved({
               result: gameResult,
               payout: args.payout,
-              playerFinalValue: args.playerFinalValue,
-              dealerFinalValue: args.dealerFinalValue,
+              playerFinalValue: 0, // Will be filled from card accumulation
+              dealerFinalValue: 0, // Will be filled from card accumulation
             });
           }
         },
         onError: (error) => {
-          logger.error('[GameEventsCasino] GameResolved error:', error);
+          logger.error('[GameEventsCasino] GamePlayed error:', error);
         },
       });
-      unwatchRefs.current.push(unwatchGameResolved);
+      unwatchRefs.current.push(unwatchGamePlayed);
 
       // Watch for CardDealt events
       const unwatchCardDealt = client.watchContractEvent({
