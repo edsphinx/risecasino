@@ -32,7 +32,7 @@ import { logEvent } from '@/lib/api';
 // TYPES
 // =============================================================================
 
-type GameActionName = 'hit' | 'stand' | 'double' | 'surrender';
+type GameActionName = 'hit' | 'stand' | 'double' | 'surrender' | 'retryVRF';
 
 export interface UseVyreCasinoActionsReturn {
   isLoading: boolean;
@@ -46,6 +46,7 @@ export interface UseVyreCasinoActionsReturn {
   stand: () => Promise<boolean>;
   double: () => Promise<boolean>;
   surrender: () => Promise<boolean>;
+  retryVRF: () => Promise<boolean>;
   // Utils
   formatChip: (value: bigint) => string;
 }
@@ -325,14 +326,23 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           args: [VYRECASINO_ADDRESS, amount],
         });
 
-        const txHash = await sendTransaction(token, 0n, data);
+        // IMPORTANT: Use passkey (eth_sendTransaction) directly for approve.
+        // Session key approve does NOT work with V6 contracts due to Porto/Relay limitations.
+        // The approve call gets "confirmed" but doesn't execute the actual ERC20.approve().
+        // Passkey-based approve works correctly and the allowance is stored on-chain permanently.
+        logger.log('[VyreCasino] Approving token via passkey (required for V6)...');
+        const txHash = await sendPasskeyTransaction(token, 0n, data);
+
         if (!txHash) {
           setError('Approval failed');
           return false;
         }
 
         logger.log('[VyreCasino] Token approved:', txHash);
-        await new Promise((r) => setTimeout(r, 500)); // Wait for tx to be mined
+
+        // Wait for tx to be confirmed on-chain
+        await new Promise((r) => setTimeout(r, 2000));
+
         return true;
       } catch (err) {
         setError(ErrorService.getSafeMessage(err));
@@ -341,7 +351,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         setIsLoading(false);
       }
     },
-    [address, sendTransaction]
+    [address, sendPasskeyTransaction]
   );
 
   // ---------------------------------------------------------------------------
@@ -382,8 +392,8 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
         // Step 2: Approve if needed
         if (allowanceState.amount < betWei) {
-          logger.log('[VyreCasino] Approving token...');
-          // Approval uses session key too!
+          logger.log('[VyreCasino] Insufficient allowance, requesting passkey approval...');
+          // Approval uses PASSKEY (eth_sendTransaction) - session key approve doesn't work with V6
           const approved = await approveToken(token, maxUint256);
           if (!approved) return false;
         }
@@ -466,6 +476,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
   const stand = useCallback(() => executeGameAction('stand'), [executeGameAction]);
   const double = useCallback(() => executeGameAction('double'), [executeGameAction]);
   const surrender = useCallback(() => executeGameAction('surrender'), [executeGameAction]);
+  const retryVRF = useCallback(() => executeGameAction('retryVRF'), [executeGameAction]);
 
   const formatChip = useCallback((value: bigint): string => formatUnits(value, 18), []);
 
@@ -479,6 +490,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
     stand,
     double,
     surrender,
+    retryVRF,
     formatChip,
   };
 }

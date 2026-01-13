@@ -44,6 +44,8 @@ export const GAME_CALLS = [
     { to: GAME_ADDRESS, signature: getFunctionSelector('hit()') },
     { to: GAME_ADDRESS, signature: getFunctionSelector('stand()') },
     { to: GAME_ADDRESS, signature: getFunctionSelector('double()') },
+    { to: GAME_ADDRESS, signature: getFunctionSelector('surrender()') },
+    { to: GAME_ADDRESS, signature: getFunctionSelector('retryVRF()') },
 
     // === ERC20 - Token Approval ===
     { to: USDC_TOKEN_ADDRESS.toLowerCase() as `0x${string}`, signature: getFunctionSelector('approve(address,uint256)') },

@@ -19,12 +19,15 @@ import type { GameResult } from '@vyrejack/shared';
 // Rise Chain Testnet WebSocket URL
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
 
-// GameState enum mapping from contract
+// GameState enum mapping from contract - V6 VALUES!
+// Must match VyreJackCore.sol GameState enum exactly:
+// Idle=0, WaitingForDeal=1, PlayerTurn=2, WaitingForHit=3, PlayerWin=4,
+// DealerWin=5, Push=6, PlayerBlackjack=7, DealerTurn=8
 const GAME_STATE_TO_RESULT: Record<number, GameResult> = {
-  5: 'win', // PlayerWin
-  6: 'lose', // DealerWin
-  7: 'push', // Push
-  8: 'blackjack', // PlayerBlackjack
+  4: 'win', // PlayerWin
+  5: 'lose', // DealerWin
+  6: 'push', // Push
+  7: 'blackjack', // PlayerBlackjack
 };
 
 export interface GameResolvedEvent {
@@ -278,7 +281,7 @@ export function useGameEventsCasino(
         },
         onLogs: (logs) => {
           for (const log of logs) {
-            const args = log.args as { player: `0x${string}`; amount: bigint };
+            const args = (log as any).args as { player: `0x${string}`; amount: bigint };
             logger.log('[GameEventsCasino] XPAwarded:', args.amount.toString());
             if (callbacksRef.current.onXPAwarded) {
               callbacksRef.current.onXPAwarded({ amount: args.amount });

@@ -21,6 +21,7 @@ import { useTabFocus } from './useTabFocus';
 import { TokenService } from '@/services';
 import type { TokenBalance, AllowanceState } from '@vyrejack/shared';
 import { VYRECASINO_ADDRESS } from '@/lib/contract';
+import { logger } from '@/lib/logger';
 
 interface UseTokenBalanceOptions {
   /** Polling interval in ms (default: 10000) */
@@ -75,6 +76,11 @@ export function useTokenBalance(
     setError(null);
 
     try {
+      logger.log('[useTokenBalance] Fetching for:', {
+        token,
+        account,
+        spender,
+      });
       const [balanceResult, allowanceResult] = await Promise.all([
         TokenService.getBalance(token, account),
         TokenService.getAllowance(token, account, spender),

@@ -37,8 +37,9 @@ import type { VyreJackGame, GameResult } from '@vyrejack/shared';
 // VyreJackGameState enum values (from VyreJackCore.sol)
 // Must match contract exactly!
 const IDLE = 0;
-const _WAITING_VRF = 1; // Not used in UI, but exists in contract
+const WAITING_VRF = 1; // WaitingForDeal - game started, waiting for VRF
 const PLAYER_TURN = 2;
+const WAITING_HIT_VRF = 3; // WaitingForHit - hit requested, waiting for VRF
 const _DEALER_TURN = 3; // Not used in UI, but exists in contract
 // Final states
 const PLAYER_WIN = 4; // Fixed: was 5
@@ -47,7 +48,6 @@ const PUSH = 6; // Fixed: was 7
 const PLAYER_BLACKJACK = 7; // Fixed: was 8
 
 // Suppress unused variable warnings
-void _WAITING_VRF;
 void _DEALER_TURN;
 
 // Card accumulator for smooth display
@@ -88,6 +88,7 @@ export interface UseGameStateCasinoReturn {
   // Derived state
   hasActiveGame: boolean;
   isPlayerTurn: boolean;
+  isWaitingVRF: boolean;
   isGameEnded: boolean;
   showingResult: boolean;
 
@@ -307,6 +308,12 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
     return service.game?.state === PLAYER_TURN;
   }, [service.game]);
 
+  // VRF waiting states - game is waiting for randomness callback
+  const isWaitingVRF = useMemo(() => {
+    const state = service.game?.state;
+    return state === WAITING_VRF || state === WAITING_HIT_VRF;
+  }, [service.game]);
+
   const showingResult = lastGameResult !== null;
 
   return {
@@ -329,6 +336,7 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
     // Derived state
     hasActiveGame,
     isPlayerTurn,
+    isWaitingVRF,
     isGameEnded,
     showingResult,
 

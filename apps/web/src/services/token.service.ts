@@ -20,6 +20,7 @@ import { createPublicClient, http, formatUnits } from 'viem';
 import { ERC20_ABI } from '@vyrejack/shared';
 import type { TokenBalance, AllowanceState } from '@vyrejack/shared';
 import { riseTestnet, VYRECASINO_ADDRESS } from '@/lib/contract';
+import { logger } from '@/lib/logger';
 
 // ⚡ Shared public client - singleton pattern
 const publicClient = createPublicClient({
@@ -81,6 +82,13 @@ async function getAllowance(
   owner: `0x${string}`,
   spender: `0x${string}` = VYRECASINO_ADDRESS
 ): Promise<AllowanceState> {
+  logger.log('[TokenService] getAllowance called:', {
+    token: token,
+    owner: owner,
+    spender: spender,
+    VYRECASINO_ADDRESS: VYRECASINO_ADDRESS,
+  });
+
   const amount = await publicClient.readContract({
     address: token,
     abi: ERC20_ABI,
@@ -90,11 +98,18 @@ async function getAllowance(
 
   // Consider "unlimited" if allowance is greater than 1e30
   const isUnlimited = amount > 10n ** 30n;
+  const isApproved = amount > 0n;
+
+  logger.log('[TokenService] getAllowance result:', {
+    amount: amount.toString(),
+    isUnlimited,
+    isApproved,
+  });
 
   return {
     amount,
     isUnlimited,
-    isApproved: amount > 0n,
+    isApproved,
   };
 }
 

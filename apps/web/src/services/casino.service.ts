@@ -68,12 +68,12 @@ async function getConfig(): Promise<CasinoConfig> {
       }),
     ]);
 
-  const result = {
+  const result: CasinoConfig = {
     houseEdgeBps: Number(houseEdgeBps),
     referralShareBps: Number(referralShareBps),
     treasuryShareBps: Number(treasuryShareBps),
     buybackShareBps: Number(buybackShareBps),
-    paused,
+    paused: paused as boolean,
   };
 
   // Update cache
@@ -91,7 +91,7 @@ async function isTokenWhitelisted(token: `0x${string}`): Promise<boolean> {
     abi: VYRECASINO_ABI,
     functionName: 'whitelistedTokens',
     args: [token],
-  });
+  }) as Promise<boolean>;
 }
 
 /**
@@ -103,7 +103,7 @@ async function isGameRegistered(game: `0x${string}`): Promise<boolean> {
     abi: VYRECASINO_ABI,
     functionName: 'registeredGames',
     args: [game],
-  });
+  }) as Promise<boolean>;
 }
 
 /**
@@ -115,7 +115,7 @@ async function getReferralEarnings(referrer: `0x${string}`, token: `0x${string}`
     abi: VYRECASINO_ABI,
     functionName: 'referralEarnings',
     args: [referrer, token],
-  });
+  }) as Promise<bigint>;
 }
 
 /**
@@ -127,7 +127,7 @@ async function getReferrer(player: `0x${string}`): Promise<`0x${string}`> {
     abi: VYRECASINO_ABI,
     functionName: 'referrers',
     args: [player],
-  });
+  }) as Promise<`0x${string}`>;
 }
 
 /**
@@ -142,7 +142,7 @@ async function getAvailableChipTiers(
     abi: VYRECASINO_ABI,
     functionName: 'getAvailableChipTiers',
     args: [player, token],
-  });
+  }) as readonly boolean[];
   return [...result];
 }
 

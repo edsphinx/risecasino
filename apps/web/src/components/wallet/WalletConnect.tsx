@@ -8,8 +8,10 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import type { WalletConnectProps } from '@vyrejack/shared';
 import { WalletTrigger } from './WalletTrigger';
 import { WalletDropdown } from './WalletDropdown';
+import { TokenApprovalModal } from '@/components/home/TokenApprovalModal';
 import { clearRiseWalletData } from '@/lib/walletRecovery';
 import { useAssetBalances } from '@/hooks/useAssetBalances';
+import { logger } from '@/lib/logger';
 import './styles/header.css';
 import './styles/desktop-dropdown.css';
 
@@ -31,6 +33,7 @@ export function WalletConnect({
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Get all asset balances with approval status
@@ -70,6 +73,30 @@ export function WalletConnect({
     setIsCreatingSession(true);
     try {
       await onCreateSession();
+
+      // After session key creation, check if USDC needs approval
+      // This provides a smooth onboarding: session key + approve in one flow
+      // NOTE: We check directly via TokenService because React state won't be updated yet
+      if (account) {
+        try {
+          const { TokenService } = await import('@/services/token.service');
+          const { USDC_TOKEN_ADDRESS } = await import('@/lib/contract');
+
+          const allowanceState = await TokenService.getAllowance(USDC_TOKEN_ADDRESS, account as `0x${string}`);
+
+          if (!allowanceState.isApproved) {
+            logger.log('[WalletConnect] USDC not approved, showing approval modal');
+            setShowApprovalModal(true);
+          } else {
+            logger.log('[WalletConnect] USDC already approved, skipping modal');
+          }
+        } catch (err) {
+          logger.error('[WalletConnect] Error checking allowance:', err);
+        }
+      }
+
+      // Refresh assets to update UI
+      await refreshAssets();
     } finally {
       setIsCreatingSession(false);
     }
@@ -138,6 +165,22 @@ export function WalletConnect({
           onDisconnect={handleDisconnect}
           onResetWallet={handleResetWallet}
           onRefreshAssets={refreshAssets}
+        />
+      )}
+
+      {/* Token Approval Modal - shown after session key creation if USDC not approved */}
+      {showApprovalModal && (
+        <TokenApprovalModal
+          tokenType="usdc"
+          onClose={() => {
+            setShowApprovalModal(false);
+            refreshAssets();
+          }}
+          onApproved={() => {
+            setShowApprovalModal(false);
+            refreshAssets();
+            logger.log('[WalletConnect] USDC approved successfully via modal');
+          }}
         />
       )}
     </div>
