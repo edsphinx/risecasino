@@ -12,8 +12,6 @@ import { TokenApprovalModal } from '@/components/home/TokenApprovalModal';
 import { clearRiseWalletData } from '@/lib/walletRecovery';
 import { useAssetBalances } from '@/hooks/useAssetBalances';
 import { logger } from '@/lib/logger';
-import './styles/header.css';
-import './styles/desktop-dropdown.css';
 
 export function WalletConnect({
   account,

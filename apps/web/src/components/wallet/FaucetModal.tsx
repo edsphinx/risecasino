@@ -8,7 +8,6 @@
 import { formatEther } from 'viem';
 import { useFaucet } from '@/hooks/useFaucet';
 import { useWallet } from '@/context/WalletContext';
-import './styles/faucet.css';
 
 interface FaucetModalProps {
   isOpen: boolean;

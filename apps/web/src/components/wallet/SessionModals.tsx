@@ -8,7 +8,6 @@ import type {
   FastModeOnboardingProps,
   SessionWarningProps,
 } from '@vyrejack/shared';
-import './styles/session-modal.css';
 
 export function SessionExpiryModal({ onExtend, onSkip, isLoading }: SessionExpiryModalProps) {
   // Handle escape key to dismiss modal
