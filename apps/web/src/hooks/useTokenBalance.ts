@@ -1,29 +1,37 @@
 /**
  * useTokenBalance Hook
  *
- * Reactive token balance with EVENT-DRIVEN updates (no polling).
+ * Reactive token balance with EVENT-DRIVEN updates + safety fallbacks.
  *
  * ⚡ PERFORMANCE OPTIMIZATIONS:
- * 1. WebSocket listener for ERC20 Transfer events
+ * 1. WebSocket listener for ERC20 Transfer events (primary)
  * 2. Game event listener for immediate post-game refresh
- * 3. No polling - only fetches on mount and events
- * 4. No unnecessary re-renders (useMemo for derived values)
- * 5. Cache in service layer (TokenService.decimalsCache)
+ * 3. Tab visibility refresh when user returns to tab
+ * 4. Safety net polling every 60s (not aggressive like 10s was)
+ * 5. No unnecessary re-renders (useMemo for derived values)
+ *
+ * 🛡️ FALLBACK MECHANISMS:
+ * - WebSocket disconnect: auto-reconnect with exponential backoff
+ * - Tab inactive: refresh on visibility change
+ * - Missed events: 60s safety net polling as absolute backup
  *
  * 🔧 MAINTAINABILITY:
  * - Uses TokenService for all contract reads (DRY)
  * - Types from @vyrejack/shared (centralized)
- * - Pure logic, minimal network calls
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'preact/hooks';
 import { createPublicClient, webSocket, parseAbiItem } from 'viem';
+import { useTabFocus } from './useTabFocus';
 import { TokenService } from '@/services';
 import type { TokenBalance, AllowanceState } from '@vyrejack/shared';
 import { VYRECASINO_ADDRESS, riseTestnet } from '@/lib/contract';
 import { logger } from '@/lib/logger';
 
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
+const SAFETY_POLL_INTERVAL = 60000; // 60s safety net (not aggressive)
+const WS_RECONNECT_BASE_DELAY = 2000; // 2s initial reconnect delay
+const WS_MAX_RECONNECT_DELAY = 30000; // Max 30s between reconnects
 
 // ERC20 Transfer event signature
 const TRANSFER_EVENT = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
@@ -31,8 +39,8 @@ const TRANSFER_EVENT = parseAbiItem('event Transfer(address indexed from, addres
 interface UseTokenBalanceOptions {
   /** Spender address for allowance check (default: VyreCasino) */
   spender?: `0x${string}`;
-  /** Disable WebSocket events (for static reads) */
-  disableEvents?: boolean;
+  /** Disable all automatic updates (for static reads) */
+  disableAutoRefresh?: boolean;
 }
 
 interface UseTokenBalanceReturn {
@@ -45,11 +53,13 @@ interface UseTokenBalanceReturn {
   formattedBalance: string;
   /** Whether spender has any approval */
   isApproved: boolean;
+  /** Whether WebSocket is connected */
+  isWsConnected: boolean;
 }
 
 /**
  * Hook for reactive token balance and allowance state
- * Uses WebSocket events for real-time updates instead of polling
+ * Uses WebSocket events for real-time updates with robust fallbacks
  *
  * @example
  * const { balance, isApproved, refresh } = useTokenBalance(CHIP_TOKEN, account);
@@ -59,16 +69,23 @@ export function useTokenBalance(
   account: `0x${string}` | null,
   options: UseTokenBalanceOptions = {}
 ): UseTokenBalanceReturn {
-  const { spender = VYRECASINO_ADDRESS, disableEvents = false } = options;
+  const { spender = VYRECASINO_ADDRESS, disableAutoRefresh = false } = options;
 
   const [balance, setBalance] = useState<TokenBalance | null>(null);
   const [allowance, setAllowance] = useState<AllowanceState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isWsConnected, setIsWsConnected] = useState(false);
 
-  // Track if we've fetched at least once
+  // Refs for cleanup and reconnection
   const hasFetchedRef = useRef(false);
   const unwatchRef = useRef<(() => void) | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  // Tab focus state
+  const isActiveTab = useTabFocus();
 
   // Fetch balance and allowance
   const refresh = useCallback(async () => {
@@ -80,7 +97,7 @@ export function useTokenBalance(
 
     // Only log on first fetch to reduce noise
     if (!hasFetchedRef.current) {
-      logger.log('[useTokenBalance] Initial fetch for:', { token, account });
+      logger.log('[useTokenBalance] Initial fetch for:', { token: token.slice(0, 10), account: account.slice(0, 10) });
     }
 
     setIsLoading(true);
@@ -92,35 +109,61 @@ export function useTokenBalance(
         TokenService.getAllowance(token, account, spender),
       ]);
 
-      setBalance(balanceResult);
-      setAllowance(allowanceResult);
-      hasFetchedRef.current = true;
+      if (isMountedRef.current) {
+        setBalance(balanceResult);
+        setAllowance(allowanceResult);
+        hasFetchedRef.current = true;
+      }
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to fetch balance';
-      setError(message);
+      if (isMountedRef.current) {
+        const message = e instanceof Error ? e.message : 'Failed to fetch balance';
+        setError(message);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [token, account, spender]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Initial fetch on mount
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // ⚡ EVENT-DRIVEN: Listen for Transfer events via WebSocket
+  // 🛡️ FALLBACK 1: Refresh when tab becomes visible again
   useEffect(() => {
-    if (disableEvents || !token || !account) {
+    if (!disableAutoRefresh && isActiveTab && hasFetchedRef.current) {
+      logger.log('[useTokenBalance] Tab became active, refreshing');
+      refresh();
+    }
+  }, [isActiveTab, disableAutoRefresh, refresh]);
+
+  // ⚡ PRIMARY: Listen for Transfer events via WebSocket with reconnection
+  useEffect(() => {
+    if (disableAutoRefresh || !token || !account) {
       return;
     }
 
-    let cleanup: (() => void) | undefined;
-
-    const setupWebSocket = async () => {
+    const setupWebSocket = () => {
       try {
         const client = createPublicClient({
           chain: riseTestnet as Parameters<typeof createPublicClient>[0]['chain'],
-          transport: webSocket(WSS_URL),
+          transport: webSocket(WSS_URL, {
+            reconnect: true,
+            retryCount: 5,
+          }),
         });
 
         // Watch for Transfer events TO or FROM this account
@@ -133,7 +176,7 @@ export function useTokenBalance(
               // If this account sent or received tokens, refresh
               if (from?.toLowerCase() === account.toLowerCase() ||
                 to?.toLowerCase() === account.toLowerCase()) {
-                logger.log('[useTokenBalance] Transfer detected, refreshing balance');
+                logger.log('[useTokenBalance] Transfer detected, refreshing');
                 refresh();
                 break; // Only refresh once per batch
               }
@@ -141,31 +184,58 @@ export function useTokenBalance(
           },
           onError: (err) => {
             logger.error('[useTokenBalance] WebSocket error:', err);
+            setIsWsConnected(false);
+
+            // Schedule reconnection with exponential backoff
+            if (isMountedRef.current) {
+              const delay = Math.min(
+                WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttemptRef.current),
+                WS_MAX_RECONNECT_DELAY
+              );
+              reconnectAttemptRef.current++;
+
+              logger.log(`[useTokenBalance] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`);
+
+              reconnectTimeoutRef.current = setTimeout(() => {
+                if (isMountedRef.current) {
+                  setupWebSocket();
+                }
+              }, delay);
+            }
           },
         });
 
         unwatchRef.current = unwatch;
-        cleanup = unwatch;
+        setIsWsConnected(true);
+        reconnectAttemptRef.current = 0; // Reset on successful connection
+
       } catch (err) {
         logger.error('[useTokenBalance] Failed to setup WebSocket:', err);
+        setIsWsConnected(false);
       }
     };
 
     setupWebSocket();
 
     return () => {
-      if (cleanup) cleanup();
       if (unwatchRef.current) {
         unwatchRef.current();
         unwatchRef.current = null;
       }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      setIsWsConnected(false);
     };
-  }, [token, account, disableEvents, refresh]);
+  }, [token, account, disableAutoRefresh, refresh]);
 
   // ⚡ EVENT-DRIVEN: Listen for game resolved events
   useEffect(() => {
+    if (disableAutoRefresh) return;
+
     const handleGameResolved = () => {
-      logger.log('[useTokenBalance] Game resolved, refreshing balance');
+      logger.log('[useTokenBalance] Game resolved, refreshing');
       // Small delay to ensure blockchain state is updated
       setTimeout(refresh, 200);
     };
@@ -174,7 +244,21 @@ export function useTokenBalance(
     return () => {
       window.removeEventListener('vyrejack:gameResolved', handleGameResolved);
     };
-  }, [refresh]);
+  }, [refresh, disableAutoRefresh]);
+
+  // 🛡️ FALLBACK 2: Safety net polling every 60s (only when tab active)
+  useEffect(() => {
+    if (disableAutoRefresh || !isActiveTab || !token || !account) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      logger.log('[useTokenBalance] Safety net refresh (60s)');
+      refresh();
+    }, SAFETY_POLL_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [disableAutoRefresh, isActiveTab, token, account, refresh]);
 
   // ⚡ OPTIMIZATION: Memoized derived values
   const formattedBalance = useMemo(() => {
@@ -194,5 +278,6 @@ export function useTokenBalance(
     refresh,
     formattedBalance,
     isApproved,
+    isWsConnected,
   };
 }
