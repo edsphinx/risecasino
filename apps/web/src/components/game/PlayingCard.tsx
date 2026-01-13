@@ -1,13 +1,22 @@
+/**
+ * PlayingCard Component
+ *
+ * Displays a playing card with flip animation.
+ * ⚡ ANIMATIONS: Powered by GSAP for smooth card dealing and flipping
+ */
+
 import type { PlayingCardProps } from '@vyrejack/shared';
 import { useRef, useEffect } from 'preact/hooks';
 import { getCardDisplay, getCardImageUrl, getCardBackUrl } from '@/lib/cards';
-import './styles/playing-card.css';
+import { animateCardDeal, animateCardFlip } from '@/lib/animations';
 
 interface EnhancedPlayingCardProps extends PlayingCardProps {
   /** Card is dealing from deck - starts off-screen */
   isDealing?: boolean;
   /** Index in deal sequence for stagger timing */
   dealIndex?: number;
+  /** Whether this is a dealer card (affects animation direction) */
+  isDealer?: boolean;
   /** Callback when deal animation completes */
   onDealComplete?: () => void;
 }
@@ -19,13 +28,15 @@ export function PlayingCard({
   isNew = false,
   isDealing = false,
   dealIndex = 0,
+  isDealer = false,
   onDealComplete,
 }: EnhancedPlayingCardProps) {
   const { rank, suit } = getCardDisplay(cardIndex);
   const cardImageUrl = getCardImageUrl(cardIndex);
   const cardBackUrl = getCardBackUrl();
 
-  // Track if this card was ever flipped (face-down) to enable reveal animation
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hasAnimatedRef = useRef(false);
   const wasFlippedRef = useRef(!faceUp);
 
   // Update ref when faceUp changes - if it was face-down before, mark as was-flipped
@@ -35,26 +46,45 @@ export function PlayingCard({
     }
   }, [faceUp]);
 
-  // Calculate deal delay based on position in sequence
-  const dealDelay = dealIndex * 200;
+  // ⚡ GSAP: Deal animation on mount
+  useEffect(() => {
+    if ((isNew || isDealing) && cardRef.current && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
 
-  const handleAnimationEnd = (e: { animationName: string }) => {
-    if (e.animationName === 'deal-from-deck' && onDealComplete) {
-      onDealComplete();
+      // Small delay to ensure DOM is ready
+      const timeout = setTimeout(() => {
+        if (cardRef.current) {
+          const tween = animateCardDeal(cardRef.current, dealIndex, isDealer);
+
+          // Call onDealComplete when animation finishes
+          if (onDealComplete) {
+            tween.eventCallback('onComplete', onDealComplete);
+          }
+        }
+      }, delay);
+
+      return () => clearTimeout(timeout);
     }
-  };
+  }, [isNew, isDealing, dealIndex, isDealer, delay, onDealComplete]);
 
-  // Build class string - only add was-flipped if we need the reveal animation
+  // ⚡ GSAP: Flip animation when card is revealed
+  useEffect(() => {
+    if (wasFlippedRef.current && faceUp && cardRef.current) {
+      const cardInner = cardRef.current.querySelector('.card-inner');
+      if (cardInner) {
+        animateCardFlip(cardInner);
+      }
+    }
+  }, [faceUp]);
+
+  // Build class string
   const innerClasses = `card-inner ${!faceUp ? 'flipped' : ''} ${wasFlippedRef.current && faceUp ? 'was-flipped' : ''}`;
 
   return (
     <div
-      className={`playing-card ${isNew ? 'deal-animation' : ''} ${isDealing ? 'dealing-from-deck' : ''}`}
-      style={{
-        animationDelay: isDealing ? `${dealDelay}ms` : `${delay}ms`,
-        '--deal-delay': `${dealDelay}ms`,
-      }}
-      onAnimationEnd={handleAnimationEnd}
+      ref={cardRef}
+      className="playing-card"
+      style={{ opacity: isNew || isDealing ? 0 : 1 }}
     >
       <div className={innerClasses}>
         {/* Card Front - PNG Image */}

@@ -1,6 +1,5 @@
 import type { HandProps } from '@vyrejack/shared';
 import { PlayingCard } from './PlayingCard';
-import './styles/hand.css';
 
 // Extend HandProps to allow omitting value display (for external rendering)
 interface ExtendedHandProps extends HandProps {

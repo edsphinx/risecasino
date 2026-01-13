@@ -6,12 +6,14 @@
  * - Near-miss messaging for losses
  * - Streak counter for engagement
  * - Quick replay with same bet
+ * 
+ * ⚡ ANIMATIONS: Powered by GSAP for smooth, casino-quality transitions
  */
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { Hand } from './Hand';
 import type { GameResult } from '@vyrejack/shared';
-import './styles/result-overlay.css';
+import { animateOverlayEnter, killOverlayAnimations } from '@/lib/animations';
 
 interface GameResultOverlayProps {
   result: GameResult;
@@ -76,6 +78,7 @@ export function GameResultOverlay({
 }: GameResultOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const hasAnimatedRef = useRef(false);
 
   const config =
     result && result in RESULT_CONFIG
@@ -84,13 +87,33 @@ export function GameResultOverlay({
   const isWin = result === 'win' || result === 'blackjack';
   const isClose = Math.abs(playerValue - dealerValue) <= 2;
 
-  // Entrance animation
+  // ⚡ GSAP entrance animation
   useEffect(() => {
-    requestAnimationFrame(() => setIsVisible(true));
-    if (config.confetti) {
-      setTimeout(() => setShowConfetti(true), 600);
+    // Set visible immediately for GSAP to animate
+    setIsVisible(true);
+
+    // Only animate once
+    if (!hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+
+      // Small delay to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (result) {
+          animateOverlayEnter(result);
+        }
+      });
+
+      // Confetti after animation
+      if (config.confetti) {
+        setTimeout(() => setShowConfetti(true), 800);
+      }
     }
-  }, []);
+
+    // Cleanup on unmount
+    return () => {
+      killOverlayAnimations();
+    };
+  }, [result, config.confetti]);
 
   // Near-miss messaging for psychological engagement
   const getNearMissMessage = () => {
