@@ -4,7 +4,6 @@
  */
 
 import { Logo } from '@/components/brand/Logo';
-import './LoadingScreen.css';
 
 interface LoadingScreenProps {
   message?: string;

@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from 'preact/hooks';
 import { Logo } from '@/components/brand/Logo';
-import './app-loader.css';
 
 interface AppLoaderProps {
   onLoadComplete: () => void;

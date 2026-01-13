@@ -4,7 +4,6 @@
 
 import { Logo } from '@/components/brand/Logo';
 import { VYRECASINO_ADDRESS } from '@/lib/contract';
-import './Footer.css';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();

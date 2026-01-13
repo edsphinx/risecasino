@@ -3,7 +3,6 @@
  * Matches AppLoader style for unified experience
  */
 
-import './page-loader.css';
 
 export function PageLoader() {
   return (
