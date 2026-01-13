@@ -5,7 +5,6 @@
  */
 
 import { useGameNavigation } from '@/hooks/useGameNavigation';
-import './styles/game-selector.css';
 
 // Official USDC logo
 const USDC_LOGO = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';

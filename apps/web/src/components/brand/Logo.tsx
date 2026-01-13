@@ -1,4 +1,3 @@
-import './styles/brand.css';
 
 /**
  * VyreJack Logo Component

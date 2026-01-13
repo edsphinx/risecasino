@@ -3,7 +3,6 @@
  * Highlights the Rise tech stack used in VyreCasino
  */
 
-import './PoweredByRise.css';
 
 interface TechFeature {
   icon: string;

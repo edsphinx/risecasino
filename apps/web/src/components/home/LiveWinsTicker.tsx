@@ -7,7 +7,6 @@
 
 import { useLiveWins } from '@/hooks/useLiveWins';
 import type { LiveWinEvent } from '@/services/live-activity.service';
-import './WinsTicker.css';
 
 // Mock data for initial render before first real win
 const MOCK_WINS: LiveWinEvent[] = [

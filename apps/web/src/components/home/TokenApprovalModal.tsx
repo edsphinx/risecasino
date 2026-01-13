@@ -15,7 +15,6 @@ import { CHIP_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS, VYRECASINO_ADDRESS } from '@/li
 import { ERC20_ABI } from '@vyrejack/shared';
 import { logger } from '@/lib/logger';
 import type { TokenType } from '@/hooks/useGameNavigation';
-import './styles/approval-modal.css';
 
 interface TokenApprovalModalProps {
   tokenType: TokenType;

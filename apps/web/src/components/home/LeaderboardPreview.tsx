@@ -13,7 +13,6 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { useLocation } from 'wouter-preact';
 import { getLiveLeaderboard, type LeaderboardEntry } from '@/lib/api';
 import { useLeaderboardSubscription } from '@/hooks/useLeaderboardSubscription';
-import './LeaderboardPreview.css';
 
 export function LeaderboardPreview() {
   const [, setLocation] = useLocation();
