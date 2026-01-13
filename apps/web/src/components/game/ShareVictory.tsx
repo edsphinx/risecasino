@@ -7,7 +7,6 @@
 
 import { useCallback } from 'preact/hooks';
 import { logEvent } from '@/lib/api';
-import './styles/share-victory.css';
 
 interface ShareVictoryProps {
   winAmount?: string; // ETH amount won
