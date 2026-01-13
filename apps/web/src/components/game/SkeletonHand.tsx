@@ -5,8 +5,6 @@
  * Creates anticipation and eliminates "empty screen" during dealing.
  */
 
-import './styles/skeleton-hand.css';
-
 interface SkeletonHandProps {
   cardCount?: number;
   isDealer?: boolean;

@@ -8,7 +8,6 @@
  */
 
 import { useState, useEffect } from 'preact/hooks';
-import './styles/vrf-overlay.css';
 
 // Contract timeouts (matching VyreJack.sol)
 const VRF_TIMEOUT_SECONDS = 60; // Can retry after 60s
