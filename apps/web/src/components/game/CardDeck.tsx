@@ -3,7 +3,6 @@
  * Shows a 3D stack of cards from which cards are dealt
  */
 
-import './styles/card-deck.css';
 
 interface CardDeckProps {
   isDealing?: boolean;

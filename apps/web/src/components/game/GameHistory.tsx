@@ -6,7 +6,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { StorageService, type GameHistoryEntry } from '@/services/storage.service';
 import { getCardDisplay } from '@/lib/cards';
-import './styles/game-history.css';
 
 interface GameHistoryProps {
   /** Callback when history updates (to sync with parent) */

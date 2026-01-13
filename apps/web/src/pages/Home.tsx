@@ -13,7 +13,6 @@ import { ComingSoonCard } from '@/components/home/ComingSoonCard';
 import { LeaderboardPreview } from '@/components/home/LeaderboardPreview';
 import { PoweredByRise } from '@/components/home/PoweredByRise';
 import { Footer } from '@/components/common/Footer';
-import './styles/home.css';
 
 // Mock data - in production, fetch from backend/contract
 const LIVE_STATS = {

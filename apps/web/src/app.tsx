@@ -12,7 +12,6 @@ import { PageLoader } from './components/common/PageLoader';
 import { AppLoader } from './components/common/AppLoader';
 import { PlayerStats } from './components/game/PlayerStats';
 import { safeParseNumber, formatSessionTime } from './lib/formatters';
-import './components/wallet/styles/mobile-header.css';
 
 // Lazy-loaded pages - each becomes a separate chunk
 const Home = lazy(() => import('./pages/Home'));

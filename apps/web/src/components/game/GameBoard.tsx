@@ -14,8 +14,6 @@ import { ContractService } from '@/services';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
 import { GameState, type GameResult } from '@vyrejack/shared';
-import './styles/casino-table.css';
-import './styles/action-buttons.css';
 
 // Snapshot of hand when game ends for display during result
 interface HandSnapshot {

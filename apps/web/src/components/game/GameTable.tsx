@@ -13,7 +13,6 @@
 
 import { Hand, HandValue } from './Hand';
 import { CardDeck } from './CardDeck';
-import './styles/casino-table.css';
 
 export interface GameTableProps {
   // Dealer state

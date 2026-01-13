@@ -5,7 +5,6 @@
 
 import { StorageService, type GameHistoryEntry } from '@/services/storage.service';
 import { useState, useEffect } from 'preact/hooks';
-import './styles/mobile-history.css';
 
 export function MobileHistory() {
     const [history, setHistory] = useState<GameHistoryEntry[]>([]);

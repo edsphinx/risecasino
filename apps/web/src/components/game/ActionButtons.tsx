@@ -1,6 +1,5 @@
 import { useState } from 'preact/hooks';
 import type { ActionButtonsProps } from '@vyrejack/shared';
-import './styles/action-buttons.css';
 
 type ActionType = 'hit' | 'stand' | 'double' | 'surrender' | null;
 

@@ -11,7 +11,6 @@
  * - Balance display
  */
 
-import './styles/action-buttons.css';
 
 export interface BettingPanelProps {
   // State

@@ -9,7 +9,6 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { getUserProfile } from '@/lib/api';
 import { getLevelProgress } from '@vyrejack/shared';
-import './styles/player-stats.css';
 
 interface UserStats {
   xp: number;

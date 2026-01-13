@@ -33,8 +33,6 @@ import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
 import { SkeletonHand } from './SkeletonHand';
 import { logger } from '@/lib/logger';
-import './styles/casino-table.css';
-import './styles/action-buttons.css';
 
 interface GameBoardCasinoProps {
   token: `0x${string}`;
