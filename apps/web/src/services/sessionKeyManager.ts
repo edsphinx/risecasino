@@ -161,11 +161,25 @@ export async function createSessionKey(
 ): Promise<SessionKeyData> {
   if (!walletAddress) throw new Error('Wallet address required');
 
-  // IMPORTANT: Clear any existing session key FIRST to avoid relay conflicts
-  // This prevents "duplicate call" errors when the relay has cached the old publicKey
+  // IMPORTANT: Revoke any existing session key from the RELAY first
+  // This prevents session key accumulation (found accounts with 150+ keys causing errors)
   const existingKey = getActiveSessionKey(walletAddress);
-  if (existingKey) {
-    logger.log('🔑 [Session] Clearing existing session key before creating new one');
+  if (existingKey && existingKey.publicKey) {
+    logger.log('🔑 [Session] Revoking old session key from relay before creating new one');
+    try {
+      const provider = getProvider();
+      if (provider) {
+        await (provider as any).request({
+          method: 'wallet_revokePermissions',
+          params: [{ id: existingKey.publicKey }],
+        });
+        logger.log('🔑 [Session] Old session key revoked successfully');
+      }
+    } catch (revokeErr) {
+      // Non-critical - continue with new key creation
+      logger.warn('🔑 [Session] Failed to revoke old key (non-critical):', revokeErr);
+    }
+    // Clear local storage
     const storageKey = getStorageKey(walletAddress);
     localStorage.removeItem(storageKey);
     activeKeyPair = null;
@@ -261,7 +275,7 @@ export async function revokeSessionKey(publicKey: string) {
     if (provider) {
       await (provider as any).request({
         method: 'wallet_revokePermissions',
-        params: [{ publicKey }],
+        params: [{ id: publicKey }],
       });
     }
   } catch (error) {
@@ -269,6 +283,72 @@ export async function revokeSessionKey(publicKey: string) {
   }
   // Always clear local
   clearAllSessionKeys();
+}
+
+/**
+ * Revoke ALL remote session keys from the relay for a given wallet address.
+ * Use this to clean up accumulated keys that cause relay errors.
+ *
+ * Usage from console:
+ *   import { revokeAllRemoteSessionKeys } from '@/services/sessionKeyManager';
+ *   await revokeAllRemoteSessionKeys('0x...');
+ */
+export async function revokeAllRemoteSessionKeys(
+  walletAddress: string
+): Promise<{ revoked: number; failed: number }> {
+  const provider = getProvider();
+  if (!provider) throw new Error('Provider not available');
+
+  logger.log(`🔑 [Session] Starting bulk revocation for ${walletAddress}...`);
+
+  // Get all keys from the relay
+  const keysResponse = await (provider as any).request({
+    method: 'wallet_getKeys',
+    params: [{ address: walletAddress }],
+  });
+
+  // Rise Testnet chain ID
+  const chainId = '0xaa39db';
+  const keys = keysResponse?.[chainId] || [];
+
+  if (keys.length === 0) {
+    logger.log('🔑 [Session] No remote keys found');
+    return { revoked: 0, failed: 0 };
+  }
+
+  logger.log(`🔑 [Session] Found ${keys.length} keys, revoking...`);
+
+  let revoked = 0;
+  let failed = 0;
+
+  // Revoke non-admin keys only (admin keys are webauthn keys)
+  for (const key of keys) {
+    if (key.role === 'admin') {
+      logger.log(`🔑 [Session] Skipping admin key: ${key.publicKey.slice(0, 16)}...`);
+      continue;
+    }
+
+    try {
+      await (provider as any).request({
+        method: 'wallet_revokePermissions',
+        params: [{ id: key.publicKey }],
+      });
+      revoked++;
+      if (revoked % 10 === 0) {
+        logger.log(`🔑 [Session] Revoked ${revoked} keys...`);
+      }
+    } catch {
+      failed++;
+      logger.warn(`🔑 [Session] Failed to revoke key: ${key.publicKey.slice(0, 16)}...`);
+    }
+  }
+
+  logger.log(`🔑 [Session] Bulk revocation complete: ${revoked} revoked, ${failed} failed`);
+
+  // Clear local storage too
+  clearAllSessionKeys();
+
+  return { revoked, failed };
 }
 
 // =============================================================================
