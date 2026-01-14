@@ -182,19 +182,16 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
       // Retry loop for handling nonce/duplicate call errors
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          // 2. Prepare Call
+          // 2. Prepare Call - Meteoro pattern (no chainId/from/atomicRequired)
           const prepareParams = [
             {
               calls: [
                 {
-                  to: to.toLowerCase(),
+                  to,
                   value: hexValue,
                   data,
                 },
               ],
-              chainId: '0xaa39db', // Rise Testnet
-              from: address,
-              atomicRequired: true,
               key: {
                 type: 'p256',
                 publicKey: sessionKey.publicKey,
@@ -391,7 +388,9 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         const balanceState = await TokenService.getBalance(token, address);
         if (balanceState.raw < betWei) {
           const formattedBalance = formatUnits(balanceState.raw, decimals);
-          setError(`Insufficient balance. You have ${parseFloat(formattedBalance).toFixed(2)} ${isUSDC ? 'USDC' : 'CHIP'} but tried to bet ${betAmount}`);
+          setError(
+            `Insufficient balance. You have ${parseFloat(formattedBalance).toFixed(2)} ${isUSDC ? 'USDC' : 'CHIP'} but tried to bet ${betAmount}`
+          );
           return false;
         }
 
@@ -425,7 +424,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         }
 
         logger.log('[VyreCasino] Play TX:', txHash);
-        logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => { });
+        logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => {});
 
         await new Promise((r) => setTimeout(r, 100));
         onSuccess?.();
@@ -464,7 +463,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         }
 
         logger.log(`[VyreCasino] ${action} TX:`, txHash);
-        logEvent('game_action', address, { action }).catch(() => { });
+        logEvent('game_action', address, { action }).catch(() => {});
 
         await new Promise((r) => setTimeout(r, 100));
         onSuccess?.();

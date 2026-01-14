@@ -18,7 +18,9 @@ import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
 import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title  VyreJackCore
@@ -259,7 +261,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         address _casino
     ) external initializer {
         // Note: __UUPSUpgradeable_init() removed - not needed in OpenZeppelin 5.x
-        
+
         if (_vrfCoordinator == address(0)) {
             coordinator = IVRFCoordinator(DEFAULT_VRF_COORDINATOR);
         } else {
@@ -440,7 +442,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
 
         // Return half the bet (effective bet if doubled, though you can't double then surrender)
         uint256 returnAmount = game.bet / 2;
-        
+
         _finishGame(msg.sender, GameState.DealerWin, returnAmount);
     }
 
@@ -736,15 +738,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         emit GameResolved(
             player,
             GameState.Idle,
-            0,  // No payout
-            0,  // playerFinalValue
-            0   // dealerFinalValue
+            0, // No payout
+            0, // playerFinalValue
+            0 // dealerFinalValue
         );
     }
 
-
     // ==================== ADMIN ====================
-
 
     function setCasino(
         address _casino
@@ -805,7 +805,9 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
      * @dev Only owner can authorize upgrades
      * @param newImplementation Address of the new implementation contract
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {
         // Owner authorization is the only check needed
     }
 
