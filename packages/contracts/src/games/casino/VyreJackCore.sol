@@ -258,7 +258,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         address _vrfCoordinator,
         address _casino
     ) external initializer {
-        __UUPSUpgradeable_init();
+        // Note: __UUPSUpgradeable_init() removed - not needed in OpenZeppelin 5.x
         
         if (_vrfCoordinator == address(0)) {
             coordinator = IVRFCoordinator(DEFAULT_VRF_COORDINATOR);
@@ -708,7 +708,43 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         isSoft = isSoft && aceCount > 0;
     }
 
+    // ==================== EMERGENCY ADMIN ====================
+
+    /// @notice Event emitted when a game is force-resolved by admin
+    event GameForceResolved(address indexed player, uint256 betRefunded, string reason);
+
+    /**
+     * @notice Force-resolve a stuck game (admin emergency function)
+     * @dev Only owner can call. Resets game state and emits resolution event.
+     *      Use when game is stuck due to VRF timeout, relay issues, etc.
+     * @param player The player whose game to force-resolve
+     * @param reason Reason for force resolution (for logging)
+     */
+    function forceResolveGame(
+        address player,
+        string calldata reason
+    ) external onlyOwner {
+        Game storage game = games[player];
+        require(game.state != GameState.Idle, "VyreJackCore: no active game");
+
+        uint256 betAmount = game.bet;
+
+        // Reset game state
+        delete games[player];
+
+        emit GameForceResolved(player, betAmount, reason);
+        emit GameResolved(
+            player,
+            GameState.Idle,
+            0,  // No payout
+            0,  // playerFinalValue
+            0   // dealerFinalValue
+        );
+    }
+
+
     // ==================== ADMIN ====================
+
 
     function setCasino(
         address _casino
