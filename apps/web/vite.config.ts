@@ -45,4 +45,12 @@ export default defineConfig({
   optimizeDeps: {
     include: ['preact', 'viem', 'rise-wallet', 'ox', 'shreds'],
   },
+
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ['import'],
+      },
+    },
+  },
 });

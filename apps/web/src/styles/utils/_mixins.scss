@@ -1,97 +1,27 @@
 // ==========================================================================
-// SASS MIXINS - Reusable patterns
+// SASS MIXINS - Reusable patterns that replace repetitive code
 // ==========================================================================
 
+@use 'variables' as *;
 
-
-// Glassmorphism card effect
-@mixin glass-card($bg: $color-bg-card, $border: $shadow-purple) {
-    background: $bg;
-    backdrop-filter: blur(8px);
-    border: 1px solid $border;
-    border-radius: 12px;
-}
-
-// Gradient text effect
-@mixin gradient-text($from: $color-primary, $to: $color-accent) {
-    background: linear-gradient(135deg, $from, $to);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-// Neon glow effect
-@mixin neon-glow($color: $color-primary, $intensity: 0.4) {
-    box-shadow: 0 0 20px rgba($color, $intensity);
-}
-
-// Button base styles
-@mixin btn-base {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
-    border-radius: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all $duration-fast $ease-smooth;
-    border: none;
-
-    &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-}
-
-// Primary button gradient
-@mixin btn-primary {
-    @include btn-base;
-    background: linear-gradient(135deg, $color-primary 0%, $color-accent 100%);
-    color: white;
-    box-shadow: 0 4px 20px $shadow-purple;
-
-    &:hover:not(:disabled) {
-        transform: scale(1.02);
-        box-shadow: 0 6px 25px $shadow-purple-strong;
-    }
-}
-
-// Responsive breakpoint mixin
-@mixin respond($bp) {
-    @if $bp ==sm {
-        @media (max-width: $bp-sm) {
-            @content;
-        }
-    }
-
-    @else if $bp ==md {
-        @media (max-width: $bp-md) {
-            @content;
-        }
-    }
-
-    @else if $bp ==lg {
-        @media (max-width: $bp-lg) {
-            @content;
-        }
-    }
-
-    @else if $bp ==xl {
-        @media (max-width: $bp-xl) {
-            @content;
-        }
-    }
-}
-
-// Flex center shorthand
+// ---------- Layout Mixins ----------
 @mixin flex-center {
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-// Absolute center
+@mixin flex-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+@mixin flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
 @mixin absolute-center {
     position: absolute;
     top: 50%;
@@ -99,9 +29,169 @@
     transform: translate(-50%, -50%);
 }
 
-// Text truncate
-@mixin truncate {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+@mixin absolute-fill {
+    position: absolute;
+    inset: 0;
+}
+
+// ---------- Glass Card Effect ----------
+@mixin glass($bg: $bg-card, $border: $border-purple, $radius: $radius-md, $blur: 8px) {
+    background: $bg;
+    backdrop-filter: blur($blur);
+    border: 1px solid $border;
+    border-radius: $radius;
+}
+
+// ---------- Gradient Text ----------
+@mixin gradient-text($from: $purple, $to: $pink) {
+    background: linear-gradient(135deg, $from, $to);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+// ---------- Gradient Background ----------
+@mixin gradient-bg($from: $purple, $to: $pink, $angle: 135deg) {
+    background: linear-gradient($angle, $from, $to);
+}
+
+// ---------- Shadow Levels ----------
+@mixin shadow($level: 'md', $color: $purple) {
+    @if $level =='xs' {
+        box-shadow: 0 1px 4px rgba($color, 0.15);
+    }
+
+    @else if $level =='sm' {
+        box-shadow: 0 2px 10px rgba($color, 0.2);
+    }
+
+    @else if $level =='md' {
+        box-shadow: 0 4px 20px rgba($color, 0.3);
+    }
+
+    @else if $level =='lg' {
+        box-shadow: 0 8px 40px rgba($color, 0.4);
+    }
+
+    @else if $level =='glow' {
+        box-shadow: 0 0 30px rgba($color, 0.5);
+    }
+
+    @else if $level =='neon' {
+        box-shadow: 0 0 20px rgba($color, 0.4), 0 0 40px rgba($color, 0.2);
+    }
+}
+
+// ---------- Button Base ----------
+@mixin btn($bg: $purple, $bg-hover: $purple-dark, $radius: $radius-md) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: $bg;
+    color: $white;
+    font-weight: 600;
+    border: none;
+    border-radius: $radius;
+    cursor: pointer;
+    transition: all $duration-fast $ease-smooth;
+
+    &:hover:not(:disabled) {
+        background: $bg-hover;
+        transform: translateY(-2px);
+    }
+
+    &:active:not(:disabled) {
+        transform: translateY(0);
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+// ---------- Gradient Button ----------
+@mixin btn-gradient($from: $purple, $to: $pink) {
+    @include btn;
+    background: linear-gradient(135deg, $from, $to);
+    @include shadow('md', $from);
+
+    &:hover:not(:disabled) {
+        transform: translateY(-2px) scale(1.02);
+        @include shadow('lg', $from);
+    }
+}
+
+// ---------- Responsive Breakpoint ----------
+@mixin respond($bp) {
+    $value: map-get($breakpoints, $bp);
+
+    @if $value {
+        @media (max-width: $value) {
+            @content;
+        }
+    }
+
+    @else {
+        @warn "Breakpoint '#{$bp}' not found in $breakpoints map";
+    }
+}
+
+// Mobile-first
+@mixin respond-up($bp) {
+    $value: map-get($breakpoints, $bp);
+
+    @if $value {
+        @media (min-width: $value) {
+            @content;
+        }
+    }
+}
+
+// ---------- Truncate Text ----------
+@mixin truncate($lines: 1) {
+    @if $lines ==1 {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    @else {
+        display: -webkit-box;
+        -webkit-line-clamp: $lines;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+}
+
+// ---------- Transitions ----------
+@mixin transition($props: all) {
+    transition: $props $duration-fast $ease-smooth;
+}
+
+@mixin transition-bounce($props: all) {
+    transition: $props $duration-normal $ease-bounce;
+}
+
+// ---------- Card Flip ----------
+@mixin card-3d {
+    perspective: 1000px;
+    transform-style: preserve-3d;
+}
+
+// ---------- Hide Scrollbar ----------
+@mixin hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+// ---------- Animation ----------
+@mixin animate($name, $duration: 0.3s, $timing: $ease-smooth, $fill: forwards) {
+    animation: $name $duration $timing $fill;
 }
