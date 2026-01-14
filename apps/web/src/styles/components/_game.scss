@@ -498,6 +498,21 @@
   margin-left: calc(var(--card-index, 0) * -10px);
 }
 
+// Compact layout for 5+ cards - less overlap so all cards visible
+.hand-cards-compact .hand-card {
+  // Dynamic margin based on card count: more cards = less overlap
+  // At 5 cards: -15px, at 6: -12px, at 7: -10px, etc.
+  margin-left: calc(var(--card-index, 0) * max(-25px, -80px / var(--card-total, 5)));
+
+  // Scale down cards slightly when there are many
+  transform: scale(calc(1 - (var(--card-total, 5) - 5) * 0.03));
+  transform-origin: bottom center;
+}
+
+.hand-cards-compact:hover .hand-card {
+  margin-left: calc(var(--card-index, 0) * max(-15px, -60px / var(--card-total, 5)));
+}
+
 /* Value Display */
 .hand-value {
   display: flex;
@@ -2117,4 +2132,3 @@
     max-width: 100%;
   }
 }
-

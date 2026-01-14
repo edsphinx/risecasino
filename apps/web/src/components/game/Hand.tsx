@@ -46,7 +46,10 @@ export function Hand({
       className={`hand-container ${getResultClass()} ${isDealer ? 'hand-dealer' : 'hand-player'}`}
     >
       {/* Cards with staggered entrance animation */}
-      <div className="hand-cards">
+      <div
+        className={`hand-cards ${cards.length >= 5 ? 'hand-cards-compact' : ''}`}
+        style={`--card-total: ${cards.length};`}
+      >
         {cards.map((card, index) => (
           <div
             key={`${card}-${index}`}
