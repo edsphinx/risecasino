@@ -2146,3 +2146,184 @@
     max-width: 100%;
   }
 }
+
+/* ==========================================================================
+   ERROR TOAST COMPONENT
+   Animated overlay toast for errors/warnings
+   ========================================================================== */
+
+.error-toast-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2rem;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.error-toast {
+  position: relative;
+  max-width: 90vw;
+  width: 420px;
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(239, 68, 68, 0.3);
+}
+
+// Error type (default - red)
+.error-toast-error {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(69, 10, 10, 0.95));
+  border: 2px solid rgba(239, 68, 68, 0.5);
+}
+
+// Warning type (yellow/orange)
+.error-toast-warning {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.95), rgba(69, 26, 3, 0.95));
+  border: 2px solid rgba(245, 158, 11, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(245, 158, 11, 0.3);
+}
+
+// Info type (blue)
+.error-toast-info {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.95), rgba(23, 37, 84, 0.95));
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(59, 130, 246, 0.3);
+}
+
+.error-toast-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.error-toast-emoji {
+  font-size: 2.5rem;
+  line-height: 1;
+  animation: pulse-emoji 2s infinite ease-in-out;
+}
+
+@keyframes pulse-emoji {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.error-toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-toast-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fca5a5;
+  margin: 0 0 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 10px rgba(239, 68, 68, 0.5);
+}
+
+.error-toast-warning .error-toast-title {
+  color: #fcd34d;
+  text-shadow: 0 2px 10px rgba(245, 158, 11, 0.5);
+}
+
+.error-toast-info .error-toast-title {
+  color: #93c5fd;
+  text-shadow: 0 2px 10px rgba(59, 130, 246, 0.5);
+}
+
+.error-toast-message {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.error-toast-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    transform: scale(1.1);
+  }
+}
+
+// Auto-dismiss progress bar
+.error-toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  width: 100%;
+  background: rgba(239, 68, 68, 0.8);
+  transform-origin: left;
+  animation: shrink-progress linear forwards;
+}
+
+.error-toast-warning .error-toast-progress {
+  background: rgba(245, 158, 11, 0.8);
+}
+
+.error-toast-info .error-toast-progress {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+@keyframes shrink-progress {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+// Responsive
+@media (max-width: 480px) {
+  .error-toast-overlay {
+    padding-top: 1rem;
+  }
+
+  .error-toast {
+    width: 95vw;
+    padding: 1rem;
+  }
+
+  .error-toast-emoji {
+    font-size: 2rem;
+  }
+
+  .error-toast-title {
+    font-size: 1.25rem;
+  }
+
+  .error-toast-message {
+    font-size: 0.9rem;
+  }
+}

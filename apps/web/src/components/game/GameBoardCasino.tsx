@@ -33,6 +33,7 @@ import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
 import { SkeletonHand } from './SkeletonHand';
 import { MobileHistory } from './MobileHistory';
+import { ErrorToast } from './ErrorToast';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
 
@@ -211,21 +212,17 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
 
   return (
     <div className="game-board-mobile bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <main className="max-w-6xl mx-auto p-2 sm:p-4 py-4 sm:py-8">
-        {/* Error Display */}
-        {actions.error && (
-          <div className="mb-6 p-4 bg-red-900/50 border border-red-500 rounded-lg text-red-200 flex items-start gap-3">
-            <span className="text-xl">⚠️</span>
-            <div>
-              <p className="font-medium">Error</p>
-              <p className="text-sm opacity-80">{actions.error}</p>
-              <button className="text-xs underline mt-1" onClick={actions.clearError}>
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Animated Error Toast */}
+      {actions.error && (
+        <ErrorToast
+          message={actions.error}
+          onDismiss={actions.clearError}
+          type="error"
+          autoDismissMs={6000}
+        />
+      )}
 
+      <main className="max-w-6xl mx-auto p-2 sm:p-4 py-4 sm:py-8">
         {/* Game Area */}
         <div className="space-y-4 sm:space-y-6 md:space-y-8">
           {/* Casino Table with effects */}
