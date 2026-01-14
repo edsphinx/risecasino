@@ -22,6 +22,19 @@ import {
     UUPSUpgradeable
 } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/// @notice Interface for VyreCasino to settle async game payouts
+interface IVyreCasino {
+    /// @notice Settle payout for async game (applies house fee)
+    /// @param player Player to receive payout
+    /// @param token Token to pay
+    /// @param amount Gross payout amount (before house edge)
+    function settlePayout(
+        address player,
+        address token,
+        uint256 amount
+    ) external;
+}
+
 /**
  * @title  VyreJackCore
  * @author edsphinx
@@ -647,8 +660,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             result = GameState.DealerWin;
             payout = 0;
         } else {
+            // PUSH: House keeps the bet, player receives bonus XP instead of refund
+            // This is the "GOTCHA" mechanic - consolation XP with celebration animation
             result = GameState.Push;
-            payout = effectiveBet; // Return the effective bet on push
+            payout = 0; // No refund on push - XP bonus handled by VyreCasino
         }
 
         _finishGame(player, result, payout);
@@ -660,16 +675,21 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 payout
     ) internal {
         Game storage game = games[player];
+        address token = game.token; // Save before delete
+        uint256 bet = game.bet; // Save before delete
         game.state = result;
 
-        // Emit event for indexer
-        emit IVyreGame.GamePlayed(player, game.token, game.bet, payout > game.bet, payout);
+        // Settle payout via VyreCasino (applies house fee on wins)
+        // For PUSH (payout=0), no settlement needed but XP will be awarded
+        if (payout > 0) {
+            IVyreCasino(casino).settlePayout(player, token, payout);
+        }
 
-        // Reset game
+        // Emit event for indexer (use saved values since game will be deleted)
+        emit IVyreGame.GamePlayed(player, token, bet, payout > bet, payout);
+
+        // Reset game state
         delete games[player];
-
-        // TODO: Notify VyreCasino of result for payout
-        // This requires VyreCasino to have a callback or poll mechanism
     }
 
     // ==================== CARD LOGIC ====================
