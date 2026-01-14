@@ -1,1089 +1,1272 @@
 // Auto-generated - DO NOT EDIT
-// Generated from: packages/hardhat-deploy/artifacts/contracts/VyreJackCore.sol/VyreJackCore.json
+// Generated from: packages/contracts/out/VyreJackCore.sol/VyreJackCore.json
 
 export const VYREJACKCORE_ABI = [
   {
-    inputs: [
-      {
-        internalType: 'address',
-        name: '_vrfCoordinator',
-        type: 'address',
-      },
-      {
-        internalType: 'address',
-        name: '_casino',
-        type: 'address',
-      },
-    ],
-    stateMutability: 'nonpayable',
     type: 'constructor',
-  },
-  {
-    inputs: [
-      {
-        internalType: 'uint8',
-        name: 'bits',
-        type: 'uint8',
-      },
-      {
-        internalType: 'uint256',
-        name: 'value',
-        type: 'uint256',
-      },
-    ],
-    name: 'SafeCastOverflowedUintDowncast',
-    type: 'error',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'active',
-        type: 'bool',
-      },
-    ],
-    name: 'ActiveChanged',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'token',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'minBet',
-        type: 'uint256',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'maxBet',
-        type: 'uint256',
-      },
-    ],
-    name: 'BetLimitsUpdated',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'card',
-        type: 'uint8',
-      },
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'isDealer',
-        type: 'bool',
-      },
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'faceUp',
-        type: 'bool',
-      },
-    ],
-    name: 'CardDealt',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'oldCasino',
-        type: 'address',
-      },
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'newCasino',
-        type: 'address',
-      },
-    ],
-    name: 'CasinoChanged',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'finalValue',
-        type: 'uint8',
-      },
-    ],
-    name: 'DealerBusted',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'card',
-        type: 'uint8',
-      },
-    ],
-    name: 'DealerCardRevealed',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'minBet',
-        type: 'uint256',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'maxBet',
-        type: 'uint256',
-      },
-    ],
-    name: 'DefaultBetLimitsUpdated',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'token',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'bet',
-        type: 'uint256',
-      },
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'won',
-        type: 'bool',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'payout',
-        type: 'uint256',
-      },
-    ],
-    name: 'GamePlayed',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'enum VyreJackCore.GameState',
-        name: 'result',
-        type: 'uint8',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'payout',
-        type: 'uint256',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'playerFinalValue',
-        type: 'uint8',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'dealerFinalValue',
-        type: 'uint8',
-      },
-    ],
-    name: 'GameResolved',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'address',
-        name: 'token',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'bet',
-        type: 'uint256',
-      },
-    ],
-    name: 'GameStarted',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'value',
-        type: 'uint8',
-      },
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'isSoft',
-        type: 'bool',
-      },
-      {
-        indexed: false,
-        internalType: 'bool',
-        name: 'isDealer',
-        type: 'bool',
-      },
-    ],
-    name: 'HandValue',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'previousOwner',
-        type: 'address',
-      },
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'newOwner',
-        type: 'address',
-      },
-    ],
-    name: 'OwnershipTransferStarted',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'previousOwner',
-        type: 'address',
-      },
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'newOwner',
-        type: 'address',
-      },
-    ],
-    name: 'OwnershipTransferred',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'string',
-        name: 'action',
-        type: 'string',
-      },
-    ],
-    name: 'PlayerAction',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint8',
-        name: 'finalValue',
-        type: 'uint8',
-      },
-    ],
-    name: 'PlayerBusted',
-    type: 'event',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: true,
-        internalType: 'address',
-        name: 'player',
-        type: 'address',
-      },
-      {
-        indexed: false,
-        internalType: 'uint256',
-        name: 'requestId',
-        type: 'uint256',
-      },
-      {
-        indexed: false,
-        internalType: 'enum VyreJackCore.RequestType',
-        name: 'requestType',
-        type: 'uint8',
-      },
-    ],
-    name: 'VRFRequested',
-    type: 'event',
-  },
-  {
     inputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'ACE_HIGH_VALUE',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'ACE_LOW_VALUE',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'BLACKJACK_PAYOUT',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'BLACKJACK_VALUE',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'CARDS_PER_DECK',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'DEALER_STAND_VALUE',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'DEFAULT_VRF_COORDINATOR',
+    inputs: [],
     outputs: [
       {
-        internalType: 'address',
         name: '',
         type: 'address',
+        internalType: 'address',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'FACE_CARD_VALUE',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'RANKS_PER_SUIT',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint8',
         name: '',
         type: 'uint8',
+        internalType: 'uint8',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'STANDARD_PAYOUT',
+    inputs: [],
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'UPGRADE_INTERFACE_VERSION',
     inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'string',
+        internalType: 'string',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'acceptOwnership',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'active',
+    inputs: [],
     outputs: [
       {
-        internalType: 'bool',
         name: '',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'calculateHandValue',
     inputs: [
       {
-        internalType: 'uint8[]',
         name: 'cards',
         type: 'uint8[]',
+        internalType: 'uint8[]',
       },
     ],
-    name: 'calculateHandValue',
     outputs: [
       {
-        internalType: 'uint8',
         name: 'value',
         type: 'uint8',
+        internalType: 'uint8',
       },
       {
-        internalType: 'bool',
         name: 'isSoft',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
     stateMutability: 'pure',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'casino',
+    inputs: [],
     outputs: [
       {
+        name: '',
+        type: 'address',
         internalType: 'address',
-        name: '',
-        type: 'address',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'coordinator',
+    inputs: [],
     outputs: [
       {
-        internalType: 'contract IVRFCoordinator',
         name: '',
         type: 'address',
+        internalType: 'contract IVRFCoordinator',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'defaultMaxBet',
-    outputs: [
-      {
-        internalType: 'uint256',
-        name: '',
-        type: 'uint256',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
     inputs: [],
-    name: 'defaultMinBet',
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'defaultMinBet',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'double',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'forceResolveGame',
     inputs: [
       {
-        internalType: 'address',
-        name: '',
-        type: 'address',
-      },
-    ],
-    name: 'games',
-    outputs: [
-      {
-        internalType: 'address',
         name: 'player',
         type: 'address',
+        internalType: 'address',
       },
       {
+        name: 'reason',
+        type: 'string',
+        internalType: 'string',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'games',
+    inputs: [
+      {
+        name: '',
+        type: 'address',
         internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: 'player',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
         name: 'token',
         type: 'address',
+        internalType: 'address',
       },
       {
-        internalType: 'uint256',
         name: 'bet',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'enum VyreJackCore.GameState',
         name: 'state',
         type: 'uint8',
+        internalType: 'enum VyreJackCore.GameState',
       },
       {
-        internalType: 'uint256',
         name: 'timestamp',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'bool',
         name: 'isDoubled',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'getGame',
     inputs: [
       {
-        internalType: 'address',
         name: 'player',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'getGame',
     outputs: [
       {
-        internalType: 'address',
         name: 'token',
         type: 'address',
+        internalType: 'address',
       },
       {
-        internalType: 'uint256',
         name: 'bet',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'uint8[]',
         name: 'playerCards',
         type: 'uint8[]',
+        internalType: 'uint8[]',
       },
       {
-        internalType: 'uint8[]',
         name: 'dealerCards',
         type: 'uint8[]',
+        internalType: 'uint8[]',
       },
       {
-        internalType: 'enum VyreJackCore.GameState',
         name: 'state',
         type: 'uint8',
+        internalType: 'enum VyreJackCore.GameState',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'hit',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
+    name: 'initialize',
+    inputs: [
+      {
+        name: '_vrfCoordinator',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: '_casino',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'isActive',
+    inputs: [],
     outputs: [
       {
-        internalType: 'bool',
         name: '',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [
-      {
-        internalType: 'address',
-        name: 'token',
-        type: 'address',
-      },
-    ],
+    type: 'function',
     name: 'maxBet',
-    outputs: [
-      {
-        internalType: 'uint256',
-        name: '',
-        type: 'uint256',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
     inputs: [
       {
-        internalType: 'address',
-        name: '',
-        type: 'address',
-      },
-    ],
-    name: 'maxBetByToken',
-    outputs: [
-      {
-        internalType: 'uint256',
-        name: '',
-        type: 'uint256',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [
-      {
-        internalType: 'address',
         name: 'token',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'minBet',
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'maxBetByToken',
     inputs: [
       {
-        internalType: 'address',
         name: '',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'minBetByToken',
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
-    inputs: [],
-    name: 'name',
+    type: 'function',
+    name: 'minBet',
+    inputs: [
+      {
+        name: 'token',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
     outputs: [
       {
-        internalType: 'string',
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'minBetByToken',
+    inputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'name',
+    inputs: [],
+    outputs: [
+      {
         name: '',
         type: 'string',
+        internalType: 'string',
       },
     ],
     stateMutability: 'pure',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'owner',
-    outputs: [
-      {
-        internalType: 'address',
-        name: '',
-        type: 'address',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
     inputs: [],
-    name: 'pendingOwner',
     outputs: [
       {
-        internalType: 'address',
         name: '',
         type: 'address',
+        internalType: 'address',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'pendingOwner',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'play',
     inputs: [
       {
-        internalType: 'address',
         name: 'player',
         type: 'address',
+        internalType: 'address',
       },
       {
-        components: [
-          {
-            internalType: 'address',
-            name: 'token',
-            type: 'address',
-          },
-          {
-            internalType: 'uint256',
-            name: 'amount',
-            type: 'uint256',
-          },
-          {
-            internalType: 'uint8',
-            name: 'chipTier',
-            type: 'uint8',
-          },
-        ],
-        internalType: 'struct IVyreGame.BetInfo',
         name: 'bet',
         type: 'tuple',
-      },
-      {
-        internalType: 'bytes',
-        name: '',
-        type: 'bytes',
-      },
-    ],
-    name: 'play',
-    outputs: [
-      {
+        internalType: 'struct IVyreGame.BetInfo',
         components: [
           {
-            internalType: 'bool',
-            name: 'won',
-            type: 'bool',
+            name: 'token',
+            type: 'address',
+            internalType: 'address',
           },
           {
-            internalType: 'uint256',
-            name: 'payout',
+            name: 'amount',
             type: 'uint256',
+            internalType: 'uint256',
           },
           {
-            internalType: 'bytes',
-            name: 'metadata',
-            type: 'bytes',
+            name: 'chipTier',
+            type: 'uint8',
+            internalType: 'uint8',
           },
         ],
-        internalType: 'struct IVyreGame.GameResult',
+      },
+      {
+        name: '',
+        type: 'bytes',
+        internalType: 'bytes',
+      },
+    ],
+    outputs: [
+      {
         name: 'result',
         type: 'tuple',
+        internalType: 'struct IVyreGame.GameResult',
+        components: [
+          {
+            name: 'won',
+            type: 'bool',
+            internalType: 'bool',
+          },
+          {
+            name: 'payout',
+            type: 'uint256',
+            internalType: 'uint256',
+          },
+          {
+            name: 'metadata',
+            type: 'bytes',
+            internalType: 'bytes',
+          },
+        ],
       },
     ],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'playerNonces',
     inputs: [
       {
-        internalType: 'address',
         name: '',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'playerNonces',
     outputs: [
       {
-        internalType: 'uint256',
         name: '',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'proxiableUUID',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'rawFulfillRandomNumbers',
     inputs: [
       {
-        internalType: 'uint256',
         name: 'requestId',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'uint256[]',
         name: 'randomNumbers',
         type: 'uint256[]',
+        internalType: 'uint256[]',
       },
     ],
-    name: 'rawFulfillRandomNumbers',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'reinitializeV2',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'setActive',
     inputs: [
       {
-        internalType: 'bool',
         name: '_active',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
-    name: 'setActive',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'setBetLimits',
     inputs: [
       {
-        internalType: 'address',
         name: 'token',
         type: 'address',
+        internalType: 'address',
       },
       {
-        internalType: 'uint256',
         name: 'min',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'uint256',
         name: 'max',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
-    name: 'setBetLimits',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'setCasino',
     inputs: [
       {
-        internalType: 'address',
         name: '_casino',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'setCasino',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'setDefaultBetLimits',
     inputs: [
       {
-        internalType: 'uint256',
         name: 'min',
         type: 'uint256',
+        internalType: 'uint256',
       },
       {
-        internalType: 'uint256',
         name: 'max',
         type: 'uint256',
+        internalType: 'uint256',
       },
     ],
-    name: 'setDefaultBetLimits',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
-    inputs: [],
+    type: 'function',
     name: 'stand',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
-    inputs: [],
-    name: 'double',
-    outputs: [],
-    stateMutability: 'nonpayable',
     type: 'function',
-  },
-  {
-    inputs: [],
     name: 'surrender',
+    inputs: [],
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'transferOwnership',
     inputs: [
       {
-        internalType: 'address',
         name: 'newOwner',
         type: 'address',
+        internalType: 'address',
       },
     ],
-    name: 'transferOwnership',
     outputs: [],
     stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
+    type: 'function',
+    name: 'upgradeToAndCall',
     inputs: [
       {
-        internalType: 'uint256',
-        name: '',
-        type: 'uint256',
+        name: 'newImplementation',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'data',
+        type: 'bytes',
+        internalType: 'bytes',
       },
     ],
+    outputs: [],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
     name: 'vrfRequests',
+    inputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
     outputs: [
       {
-        internalType: 'address',
         name: 'player',
         type: 'address',
+        internalType: 'address',
       },
       {
-        internalType: 'enum VyreJackCore.RequestType',
         name: 'requestType',
         type: 'uint8',
+        internalType: 'enum VyreJackCore.RequestType',
       },
       {
-        internalType: 'bool',
         name: 'fulfilled',
         type: 'bool',
+        internalType: 'bool',
       },
     ],
     stateMutability: 'view',
-    type: 'function',
+  },
+  {
+    type: 'event',
+    name: 'ActiveChanged',
+    inputs: [
+      {
+        name: 'active',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'BetLimitsUpdated',
+    inputs: [
+      {
+        name: 'token',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'minBet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'maxBet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'CardDealt',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'card',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+      {
+        name: 'isDealer',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+      {
+        name: 'faceUp',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'CasinoChanged',
+    inputs: [
+      {
+        name: 'oldCasino',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'newCasino',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DealerBusted',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'finalValue',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DealerCardRevealed',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'card',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'DefaultBetLimitsUpdated',
+    inputs: [
+      {
+        name: 'minBet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'maxBet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'GameForceResolved',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'betRefunded',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'reason',
+        type: 'string',
+        indexed: false,
+        internalType: 'string',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'GamePlayed',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'token',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'bet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'won',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+      {
+        name: 'payout',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'GameResolved',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'result',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'enum VyreJackCore.GameState',
+      },
+      {
+        name: 'payout',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'playerFinalValue',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+      {
+        name: 'dealerFinalValue',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'GameStarted',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'token',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
+      {
+        name: 'bet',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'HandValue',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'value',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+      {
+        name: 'isSoft',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+      {
+        name: 'isDealer',
+        type: 'bool',
+        indexed: false,
+        internalType: 'bool',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'Initialized',
+    inputs: [
+      {
+        name: 'version',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'OwnershipTransferStarted',
+    inputs: [
+      {
+        name: 'previousOwner',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'newOwner',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'OwnershipTransferred',
+    inputs: [
+      {
+        name: 'previousOwner',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'newOwner',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'PlayerAction',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'action',
+        type: 'string',
+        indexed: false,
+        internalType: 'string',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'PlayerBusted',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'finalValue',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'Upgraded',
+    inputs: [
+      {
+        name: 'implementation',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'VRFRequested',
+    inputs: [
+      {
+        name: 'player',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'requestId',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
+      {
+        name: 'requestType',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'enum VyreJackCore.RequestType',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'error',
+    name: 'AddressEmptyCode',
+    inputs: [
+      {
+        name: 'target',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'ERC1967InvalidImplementation',
+    inputs: [
+      {
+        name: 'implementation',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'ERC1967NonPayable',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'FailedCall',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'InvalidInitialization',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'NotInitializing',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'SafeCastOverflowedUintDowncast',
+    inputs: [
+      {
+        name: 'bits',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
+      {
+        name: 'value',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'UUPSUnauthorizedCallContext',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'UUPSUnsupportedProxiableUUID',
+    inputs: [
+      {
+        name: 'slot',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
   },
 ] as const;
-
-export type VyreJackCoreABI = typeof VYREJACKCORE_ABI;
