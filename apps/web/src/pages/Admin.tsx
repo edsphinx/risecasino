@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { getProvider } from '@/lib/riseWallet';
-import { revokeAllRemoteSessionKeys, getActiveSessionKey } from '@/services/sessionKeyManager';
+import { getActiveSessionKey } from '@/services/sessionKeyManager';
 import { logger } from '@/lib/logger';
 import { Footer } from '@/components/common/Footer';
 
@@ -141,41 +141,113 @@ export function Admin() {
     }
   };
 
-  // Revoke all non-admin keys
+  // Revoke all non-admin keys one by one
   const handleRevokeAll = async () => {
     if (!wallet.address) return;
 
-    setRevoking(true);
-    setMessage('Revoking all session keys...');
-
-    try {
-      const result = await revokeAllRemoteSessionKeys(wallet.address);
-      setMessage(`✅ Revoked ${result.revoked} keys, ${result.failed} failed`);
-      await fetchRemoteKeys(); // Refresh
-    } catch (err: any) {
-      setMessage(`❌ Error: ${err.message}`);
-    } finally {
-      setRevoking(false);
+    const provider = getProvider();
+    if (!provider) {
+      setMessage('❌ Provider not available');
+      return;
     }
+
+    // Get fresh keys from direct relay
+    let keysToRevoke: RemoteKey[] = [];
+    try {
+      const response = await fetch('https://relay.wallet.risechain.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'wallet_getKeys',
+          params: [{ address: wallet.address }],
+          id: 1,
+        }),
+      });
+      const data = await response.json();
+      const result = data.result || {};
+      for (const cid of Object.keys(result)) {
+        if (Array.isArray(result[cid])) {
+          keysToRevoke = [...keysToRevoke, ...result[cid]];
+        }
+      }
+    } catch {
+      setMessage('❌ Failed to fetch keys');
+      return;
+    }
+
+    // Filter non-admin keys
+    keysToRevoke = keysToRevoke.filter((k) => k.role !== 'admin');
+
+    if (keysToRevoke.length === 0) {
+      setMessage('No session keys to revoke');
+      return;
+    }
+
+    setRevoking(true);
+    setMessage(`Starting revocation of ${keysToRevoke.length} keys...`);
+
+    let revoked = 0;
+    let failed = 0;
+
+    for (let i = 0; i < keysToRevoke.length; i++) {
+      const key = keysToRevoke[i];
+      setMessage(`Revoking key ${i + 1}/${keysToRevoke.length}: ${key.publicKey?.slice(0, 16)}...`);
+
+      try {
+        logger.log(`🔑 [Admin] Attempting to revoke: ${key.publicKey}`);
+
+        await (provider as any).request({
+          method: 'wallet_revokePermissions',
+          params: [{ id: key.publicKey }],
+        });
+
+        revoked++;
+        logger.log(`🔑 [Admin] Revoked successfully: ${key.publicKey?.slice(0, 20)}...`);
+      } catch (err: any) {
+        failed++;
+        logger.error(`🔑 [Admin] Failed to revoke: ${key.publicKey?.slice(0, 20)}...`, err);
+        // If user rejected, stop the loop
+        if (err.message?.includes('rejected') || err.message?.includes('cancelled')) {
+          setMessage(
+            `⚠️ Stopped: User cancelled. Revoked: ${revoked}, Remaining: ${keysToRevoke.length - i - 1}`
+          );
+          setRevoking(false);
+          return;
+        }
+      }
+    }
+
+    setMessage(`✅ Done! Revoked: ${revoked}, Failed: ${failed}`);
+    setRevoking(false);
+    await fetchDirectFromRelay();
   };
 
-  // Revoke single key
+  // Revoke single key with detailed logging
   const handleRevokeSingle = async (publicKey: string) => {
     if (!wallet.address) return;
+
+    setMessage(`Revoking key: ${publicKey.slice(0, 20)}...`);
 
     try {
       const provider = getProvider();
       if (!provider) throw new Error('Provider not available');
 
-      await (provider as any).request({
-        method: 'wallet_revokePermissions',
-        params: [{ address: wallet.address, id: publicKey }],
+      logger.log('🔑 [Admin] Attempting wallet_revokePermissions with params:', {
+        id: publicKey,
       });
 
+      const result = await (provider as any).request({
+        method: 'wallet_revokePermissions',
+        params: [{ id: publicKey }],
+      });
+
+      logger.log('🔑 [Admin] Revoke result:', result);
       setMessage(`✅ Revoked key: ${publicKey.slice(0, 20)}...`);
-      await fetchRemoteKeys();
+      await fetchDirectFromRelay();
     } catch (err: any) {
-      setMessage(`❌ Error: ${err.message}`);
+      logger.error('🔑 [Admin] Revoke failed:', err);
+      setMessage(`❌ Error: ${err.message || 'Unknown error - check console'}`);
     }
   };
 
