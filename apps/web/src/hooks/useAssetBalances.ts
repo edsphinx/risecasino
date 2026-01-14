@@ -1,11 +1,11 @@
 /**
  * useAssetBalances - Hook for fetching multiple asset balances and approval status
  *
- * ⚡ PERFORMANCE: 
+ * ⚡ PERFORMANCE:
  * - Parallel fetches, uses TokenService caching
  * - Polling only when tab is active (same as useTokenBalance)
  * - Event-driven refresh on game resolved
- * 
+ *
  * Returns balances and approval status for USDC only (ETH is native)
  */
 
@@ -49,6 +49,7 @@ export function useAssetBalances(account: `0x${string}` | null): UseAssetBalance
     }
 
     setIsLoading(true);
+    logger.log('[useAssetBalances] Fetching for account:', account);
 
     try {
       // Fetch USDC balance and approval (ETH is handled separately as native)
@@ -57,7 +58,7 @@ export function useAssetBalances(account: `0x${string}` | null): UseAssetBalance
         TokenService.getAllowance(USDC_TOKEN_ADDRESS, account),
       ]);
 
-      setAssets([
+      const newAssets = [
         {
           symbol: 'USDC',
           balance: parseFloat(usdcBalance.formatted).toFixed(2),
@@ -66,7 +67,15 @@ export function useAssetBalances(account: `0x${string}` | null): UseAssetBalance
           isApproved: usdcAllowance.isApproved,
           icon: TOKEN_LOGOS.usdc,
         },
-      ]);
+      ];
+
+      logger.log(
+        '[useAssetBalances] USDC balance:',
+        usdcBalance.formatted,
+        'raw:',
+        usdcBalance.raw.toString()
+      );
+      setAssets(newAssets);
     } catch (error) {
       logger.error('[useAssetBalances] Error fetching:', error);
     } finally {

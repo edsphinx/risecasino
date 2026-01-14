@@ -11,6 +11,7 @@ import { ModalErrorBoundary } from './components/common/ErrorBoundary';
 import { PageLoader } from './components/common/PageLoader';
 import { AppLoader } from './components/common/AppLoader';
 import { PlayerStats } from './components/game/PlayerStats';
+import { useAssetBalances } from './hooks/useAssetBalances';
 import { safeParseNumber, formatSessionTime } from './lib/formatters';
 
 // Lazy-loaded pages - each becomes a separate chunk
@@ -27,6 +28,11 @@ function Header() {
   // Use global wallet context
   const wallet = useWallet();
 
+  // Get USDC balance for mobile header display
+  const { assets } = useAssetBalances(wallet.address as `0x${string}` | null);
+  const usdcAsset = assets.find((a) => a.symbol === 'USDC');
+  const usdcBalance = usdcAsset?.balance ?? '0';
+
   return (
     <>
       {/* Ultra-compact mobile header */}
@@ -38,10 +44,16 @@ function Header() {
 
           {/* Right side: balance preview + hamburger */}
           <div className="mobile-header-right">
-            {wallet.isConnected && wallet.balance !== null && (
+            {wallet.isConnected && (
               <div className="mobile-balance">
-                <span className="mobile-balance-icon">💰</span>
-                <span>{safeParseNumber(wallet.formatBalance()).toFixed(4)}</span>
+                <img
+                  src="https://assets.coingecko.com/coins/images/6319/small/usdc.png"
+                  alt="USDC"
+                  className="mobile-balance-icon"
+                  width="16"
+                  height="16"
+                />
+                <span>${usdcBalance}</span>
               </div>
             )}
             {wallet.isConnected && !wallet.balance && (
