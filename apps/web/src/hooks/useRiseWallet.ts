@@ -23,10 +23,7 @@ export function useRiseWallet(): UseRiseWalletReturn {
   // Auto session flow states
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showExpiryModal, setShowExpiryModal] = useState(false);
-  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(ONBOARDING_SEEN_KEY) === 'true';
-  });
+
   const [skipFastMode, setSkipFastMode] = useState(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SKIP_FASTMODE_KEY) === 'true';
@@ -75,15 +72,16 @@ export function useRiseWallet(): UseRiseWalletReturn {
         return;
       }
 
-      // If user hasn't seen onboarding and hasn't skipped fast mode, show it
-      if (!hasSeenOnboarding && !skipFastMode) {
-        setShowOnboarding(true);
+      // If user explicitly skipped fast mode, don't annoy them
+      if (skipFastMode) {
+        logger.log('🔑 [useRiseWallet] User skipped fast mode, not showing onboarding');
         return;
       }
 
-      // Note: We NO LONGER auto-create session key here
-      // Rise Wallet requires user gesture for wallet_grantPermissions
-      // User must explicitly enable Fast Mode via button or onboarding flow
+      // No session key and user hasn't skipped → ALWAYS show onboarding
+      // Even if they've seen it before (they might need to create a new key)
+      logger.log('🔑 [useRiseWallet] No session key, showing onboarding');
+      setShowOnboarding(true);
     }
 
     // Reset when disconnected
@@ -92,15 +90,7 @@ export function useRiseWallet(): UseRiseWalletReturn {
       setShowOnboarding(false);
       setShowExpiryModal(false);
     }
-  }, [
-    connection.isConnected,
-    wasConnected,
-    hasSeenOnboarding,
-    skipFastMode,
-    sessionKey.hasSessionKey,
-    sessionKey.isCreating,
-    sessionKey.create,
-  ]);
+  }, [connection.isConnected, wasConnected, skipFastMode, sessionKey.hasSessionKey]);
 
   // Track previous session state to detect expiry
   const [hadSessionKey, setHadSessionKey] = useState(false);
@@ -159,7 +149,6 @@ export function useRiseWallet(): UseRiseWalletReturn {
     async (enableFastMode: boolean) => {
       setShowOnboarding(false);
       localStorage.setItem(ONBOARDING_SEEN_KEY, 'true');
-      setHasSeenOnboarding(true);
 
       if (enableFastMode) {
         await sessionKey.create();
