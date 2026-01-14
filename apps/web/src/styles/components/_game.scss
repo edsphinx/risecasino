@@ -498,19 +498,33 @@
   margin-left: calc(var(--card-index, 0) * -10px);
 }
 
-// Compact layout for 5+ cards - less overlap so all cards visible
+// Compact layout for 5+ cards - UNIFORM spacing for all cards
 .hand-cards-compact .hand-card {
-  // Dynamic margin based on card count: more cards = less overlap
-  // At 5 cards: -15px, at 6: -12px, at 7: -10px, etc.
-  margin-left: calc(var(--card-index, 0) * max(-25px, -80px / var(--card-total, 5)));
+  // All cards (except first) have same negative margin for uniform look
+  // First card: 0, others: -45px (or scaled based on count)
+  // Using min() to ensure minimum gap, max() to prevent overlapping too much
+  margin-left: calc(var(--card-index, 0) * clamp(-55px, -350px / var(--card-total, 5), -35px) / var(--card-index, 1));
 
-  // Scale down cards slightly when there are many
-  transform: scale(calc(1 - (var(--card-total, 5) - 5) * 0.03));
+  // Scale down cards proportionally (5 cards = 100%, 7 cards = 94%, etc.)
+  transform: scale(clamp(0.85, 1.15 - var(--card-total, 5) * 0.03, 1));
   transform-origin: bottom center;
 }
 
-.hand-cards-compact:hover .hand-card {
-  margin-left: calc(var(--card-index, 0) * max(-15px, -60px / var(--card-total, 5)));
+// Simpler approach: same margin for each card after first
+.hand-cards-compact .hand-card:not(:first-child) {
+  // Uniform margin: tighter as more cards
+  // 5 cards = -45px, 6 = -50px, 7 = -55px (capped)
+  margin-left: clamp(-60px, -30px - (var(--card-total, 5) - 4) * 5px, -40px);
+}
+
+// First card always has no margin
+.hand-cards-compact .hand-card:first-child {
+  margin-left: 0;
+}
+
+.hand-cards-compact:hover .hand-card:not(:first-child) {
+  // Fan out slightly on hover
+  margin-left: clamp(-45px, -20px - (var(--card-total, 5) - 4) * 3px, -30px);
 }
 
 /* Value Display */
