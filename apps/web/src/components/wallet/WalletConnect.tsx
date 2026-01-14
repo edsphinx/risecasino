@@ -80,7 +80,10 @@ export function WalletConnect({
           const { TokenService } = await import('@/services/token.service');
           const { USDC_TOKEN_ADDRESS } = await import('@/lib/contract');
 
-          const allowanceState = await TokenService.getAllowance(USDC_TOKEN_ADDRESS, account as `0x${string}`);
+          const allowanceState = await TokenService.getAllowance(
+            USDC_TOKEN_ADDRESS,
+            account as `0x${string}`
+          );
 
           if (!allowanceState.isApproved) {
             logger.log('[WalletConnect] USDC not approved, showing approval modal');
@@ -106,7 +109,29 @@ export function WalletConnect({
   };
 
   const handleResetWallet = async () => {
-    if (confirm('This will clear all wallet data and reload the page. Continue?')) {
+    if (!account) return;
+
+    const deepClean = confirm(
+      'Reset Wallet Options:\n\n' +
+        'OK = Deep clean (revoke ALL session keys from relay + clear local data)\n' +
+        'Cancel = Quick clean (clear local data only)'
+    );
+
+    try {
+      if (deepClean) {
+        logger.log('[WalletConnect] Starting deep clean (revoking remote session keys)...');
+        const { revokeAllRemoteSessionKeys } = await import('@/services/sessionKeyManager');
+        const result = await revokeAllRemoteSessionKeys(account);
+        logger.log(
+          `[WalletConnect] Deep clean complete: ${result.revoked} revoked, ${result.failed} failed`
+        );
+      }
+
+      await clearRiseWalletData();
+      window.location.reload();
+    } catch (error) {
+      logger.error('[WalletConnect] Reset wallet failed:', error);
+      // Fallback to just local cleanup
       await clearRiseWalletData();
       window.location.reload();
     }

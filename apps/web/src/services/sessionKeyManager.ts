@@ -331,7 +331,7 @@ export async function revokeAllRemoteSessionKeys(
     try {
       await (provider as any).request({
         method: 'wallet_revokePermissions',
-        params: [{ id: key.publicKey }],
+        params: [{ address: walletAddress, id: key.publicKey }],
       });
       revoked++;
       if (revoked % 10 === 0) {
