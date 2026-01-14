@@ -1,19 +1,12 @@
-/**
- * GameResultOverlay - Full-screen addictive result display
- *
- * Psychological elements included:
- * - Celebration amplification for wins
- * - Near-miss messaging for losses
- * - Streak counter for engagement
- * - Quick replay with same bet
- * 
- * ⚡ ANIMATIONS: Powered by GSAP for smooth, casino-quality transitions
- */
-
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { Hand } from './Hand';
 import type { GameResult } from '@vyrejack/shared';
-import { animateOverlayEnter, killOverlayAnimations } from '@/lib/animations';
+import {
+  animateOverlayEnter,
+  killOverlayAnimations,
+  animateWinningHand,
+  animateLosingHand,
+} from '@/lib/animations';
 
 interface GameResultOverlayProps {
   result: GameResult;
@@ -100,6 +93,22 @@ export function GameResultOverlay({
       requestAnimationFrame(() => {
         if (result) {
           animateOverlayEnter(result);
+
+          // Animate winning/losing hands after a short delay
+          setTimeout(() => {
+            const playerHandCards = document.querySelectorAll('.result-hand.player .playing-card');
+            const dealerHandCards = document.querySelectorAll('.result-hand.dealer .playing-card');
+
+            if (isWin && playerHandCards.length > 0) {
+              animateWinningHand(Array.from(playerHandCards));
+            } else if (result === 'lose' && playerHandCards.length > 0) {
+              animateLosingHand(Array.from(playerHandCards));
+              // Dealer wins, so animate their hand as winning
+              if (dealerHandCards.length > 0) {
+                animateWinningHand(Array.from(dealerHandCards));
+              }
+            }
+          }, 600);
         }
       });
 
@@ -113,7 +122,7 @@ export function GameResultOverlay({
     return () => {
       killOverlayAnimations();
     };
-  }, [result, config.confetti]);
+  }, [result, config.confetti, isWin]);
 
   // Near-miss messaging for psychological engagement
   const getNearMissMessage = () => {
@@ -149,7 +158,9 @@ export function GameResultOverlay({
           <span className="result-header-emoji">{config.emoji}</span>
           <h1 className="result-title">{config.title}</h1>
           {isWin && payout && (
-            <span className="payout-inline">+${payout} {tokenSymbol}</span>
+            <span className="payout-inline">
+              +${payout} {tokenSymbol}
+            </span>
           )}
         </div>
 
