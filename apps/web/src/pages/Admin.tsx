@@ -47,18 +47,95 @@ export function Admin() {
         params: [{ address: wallet.address }],
       });
 
-      const chainId = '0xaa39db';
-      const keys = response?.[chainId] || [];
+      // Debug logging
+      logger.log('🔑 [Admin] wallet_getKeys response:', JSON.stringify(response, null, 2));
+
+      // Handle different response formats:
+      // 1. Object with chainId keys: { "0xaa39db": [...keys] }
+      // 2. Direct array: [...keys]
+      // 3. Empty response
+      let keys: RemoteKey[] = [];
+
+      if (Array.isArray(response)) {
+        // Direct array format
+        keys = response;
+        logger.log('🔑 [Admin] Response is direct array:', keys.length);
+      } else if (response && typeof response === 'object') {
+        // Object with chainId keys - try Rise Testnet first
+        const chainId = '0xaa39db';
+        if (response[chainId]) {
+          keys = response[chainId];
+          logger.log('🔑 [Admin] Found keys for chainId 0xaa39db:', keys.length);
+        } else {
+          // Try all chainIds
+          const allChainIds = Object.keys(response);
+          logger.log('🔑 [Admin] Available chainIds:', allChainIds);
+          for (const cid of allChainIds) {
+            if (Array.isArray(response[cid])) {
+              keys = [...keys, ...response[cid]];
+            }
+          }
+          logger.log('🔑 [Admin] Total keys from all chains:', keys.length);
+        }
+      }
+
       setRemoteKeys(keys);
 
       // Get local key
       const local = getActiveSessionKey(wallet.address);
       setLocalKey(local);
 
-      setMessage(`Found ${keys.length} keys in relay`);
+      setMessage(`Found ${keys.length} keys in relay (raw response logged to console)`);
     } catch (err: any) {
       logger.error('Failed to fetch keys:', err);
       setMessage(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch keys directly from relay (bypassing provider)
+  const fetchDirectFromRelay = async () => {
+    if (!wallet.address) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch('https://relay.wallet.risechain.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'wallet_getKeys',
+          params: [{ address: wallet.address }],
+          id: 1,
+        }),
+      });
+
+      const data = await response.json();
+      logger.log('🔑 [Admin] Direct relay response:', JSON.stringify(data, null, 2));
+
+      if (data.error) {
+        throw new Error(data.error.message || 'Relay error');
+      }
+
+      // Parse result - should be { "0xaa39db": [...keys], ... }
+      const result = data.result || {};
+      let keys: RemoteKey[] = [];
+
+      const allChainIds = Object.keys(result);
+      logger.log('🔑 [Admin] Direct relay chainIds:', allChainIds);
+
+      for (const cid of allChainIds) {
+        if (Array.isArray(result[cid])) {
+          keys = [...keys, ...result[cid]];
+        }
+      }
+
+      setRemoteKeys(keys);
+      setMessage(`✅ Direct relay: Found ${keys.length} keys across ${allChainIds.length} chains`);
+    } catch (err: any) {
+      logger.error('Direct relay fetch failed:', err);
+      setMessage(`❌ Direct relay error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -174,7 +251,10 @@ export function Admin() {
         {/* Actions */}
         <div className="admin-actions">
           <button className="admin-btn" onClick={fetchRemoteKeys} disabled={loading}>
-            {loading ? '⏳ Loading...' : '🔄 Refresh Keys'}
+            {loading ? '⏳ Loading...' : '🔄 Via Provider'}
+          </button>
+          <button className="admin-btn" onClick={fetchDirectFromRelay} disabled={loading}>
+            {loading ? '⏳ Loading...' : '🌐 Direct Relay'}
           </button>
           <button
             className="admin-btn admin-btn-danger"
