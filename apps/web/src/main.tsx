@@ -3,7 +3,7 @@ import './lib/webauthn-polyfill';
 
 import { render } from 'preact';
 import { App } from './app';
-import './styles/globals.css';
+import './styles/globals.scss';
 import { checkPendingDbDelete } from './lib/walletRecovery';
 
 // Complete any pending IndexedDB cleanup from recovery modal

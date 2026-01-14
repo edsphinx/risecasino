@@ -1,0 +1,491 @@
+/* ==========================================================================
+   VRF OVERLAY COMPONENT
+   Layout + spinner (continuous animations stay in CSS)
+   ========================================================================== */
+
+.vrf-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.vrf-overlay-dealing {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.vrf-overlay-delayed {
+  background: rgba(30, 27, 0, 0.95);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.vrf-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(168, 85, 247, 0.3);
+  border-top-color: #a855f7;
+  border-radius: 50%;
+  animation: vrf-spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes vrf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vrf-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.vrf-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fbbf24;
+  margin: 0 0 0.5rem 0;
+}
+
+.vrf-message {
+  color: #e5e7eb;
+  font-size: 0.875rem;
+  margin: 0 0 0.75rem 0;
+  line-height: 1.5;
+}
+
+.vrf-submessage {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.vrf-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.vrf-timer-label {
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+.vrf-timer-value {
+  font-family: monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.vrf-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  width: 100%;
+  max-width: 280px;
+}
+
+.vrf-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vrf-btn-cancel {
+  background: linear-gradient(to right, #dc2626, #ef4444);
+  color: white;
+}
+
+.vrf-btn-cancel:hover:not(:disabled) {
+  background: linear-gradient(to right, #ef4444, #f87171);
+  transform: scale(1.02);
+}
+
+.vrf-btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: vrf-spin 0.8s linear infinite;
+}
+
+.vrf-wait-info {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.vrf-wait-text {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.vrf-hint {
+  color: #6b7280;
+  font-size: 0.625rem;
+  margin: 1rem 0 0 0;
+  max-width: 200px;
+}
+
+/* ==========================================================================
+   SKELETON HAND COMPONENT
+   Loading placeholders - shimmer animations stay in CSS (performant)
+   ========================================================================== */
+
+.skeleton-hand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.skeleton-card {
+  width: 90px;
+  height: 126px;
+  position: relative;
+  animation: skeletonCardEnter 0.3s ease-out forwards;
+  opacity: 0;
+}
+
+.skeleton-card-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.15) 40%,
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.15) 60%,
+      transparent 80%);
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeletonCardEnter {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px) rotate(-5deg) scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes skeletonPulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 20px rgba(139, 92, 246, 0.2);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Skeleton Responsive */
+@media (max-width: 768px) {
+  .skeleton-card {
+    width: 105px;
+    height: 155px;
+  }
+}
+
+@media (max-width: 640px) {
+  .skeleton-card {
+    width: 126px;
+    height: 176px;
+  }
+}
+
+@media (max-width: 400px) {
+  .skeleton-card {
+    width: 107px;
+    height: 150px;
+  }
+}
+
+/* ==========================================================================
+   XP POPUP COMPONENT
+   ========================================================================== */
+
+.xp-popup {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  pointer-events: none;
+  animation: xp-popup-in 2s ease-out forwards;
+}
+
+@keyframes xp-popup-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.8);
+  }
+
+  20% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1.1);
+  }
+
+  40% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  80% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-20px) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-50px) scale(0.9);
+  }
+}
+
+.xp-popup-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.9) 0%, rgba(251, 191, 36, 0.9) 100%);
+  padding: 0.75rem 1.5rem;
+  border-radius: 50px;
+  box-shadow: 0 8px 32px rgba(234, 179, 8, 0.4), 0 0 60px rgba(234, 179, 8, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.xp-icon {
+  font-size: 1.5rem;
+  animation: xp-icon-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes xp-icon-pulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.2);
+  }
+}
+
+.xp-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+.xp-progress-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+
+.xp-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.xp-level {
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.xp-current {
+  color: #9ca3af;
+}
+
+.xp-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 50%, #c4b5fd 100%);
+  border-radius: 3px;
+  transition: width 0.5s ease-out;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+
+/* ==========================================================================
+   XP GAIN POPUP COMPONENT
+   ========================================================================== */
+
+.xp-gain-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 16px;
+  font-weight: 700;
+  font-size: 24px;
+  z-index: 1000;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.xp-gain-popup.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.xp-gain-popup.exiting {
+  opacity: 0;
+  transform: translate(-50%, -100%) scale(0.8);
+  transition: all 0.5s ease-out;
+}
+
+.xp-epic {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: white;
+  animation: epicPulse 0.5s ease-out;
+}
+
+.xp-win {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+}
+
+.xp-play {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+}
+
+.xp-push {
+  background: linear-gradient(135deg, #64748b, #475569);
+  color: white;
+}
+
+.xp-emoji {
+  font-size: 28px;
+  animation: bounce 0.5s ease-out;
+}
+
+@keyframes epicPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 20px rgba(249, 115, 22, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+}
+
+@keyframes bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* XP Gain Responsive */
+@media (max-width: 640px) {
+  .xp-gain-popup {
+    font-size: 20px;
+    padding: 10px 20px;
+  }
+
+  .xp-emoji {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xp-gain-popup {
+    transition: opacity 0.2s ease;
+  }
+
+  .xp-gain-popup.visible {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .xp-gain-popup.exiting {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .xp-emoji {
+    animation: none;
+  }
+
+  .xp-epic {
+    animation: none;
+  }
+}
+

@@ -1,0 +1,262 @@
+/* ==========================================================================
+   VYREJACK - MODULAR STYLESHEET
+   Main entry point - imports all component partials
+   ========================================================================== */
+
+/* Tailwind directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties - Design tokens */
+:root {
+    /* Timing */
+    --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-back: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --duration-fast: 0.2s;
+    --duration-normal: 0.4s;
+    --duration-slow: 0.6s;
+
+    /* Brand Colors */
+    --color-primary: #8b5cf6;
+    --color-primary-light: #a78bfa;
+    --color-primary-dark: #7c3aed;
+    --color-accent: #ec4899;
+    --color-gold: #fbbf24;
+    --color-success: #22c55e;
+    --color-success-light: #4ade80;
+    --color-error: #f87171;
+    --color-error-dark: #ef4444;
+    --color-teal: #10b981;
+
+    /* Neutral Colors */
+    --color-text: #e2e8f0;
+    --color-text-muted: #94a3b8;
+    --color-text-dim: #64748b;
+    --color-bg-dark: #0f172a;
+    --color-bg-card: rgba(30, 41, 59, 0.8);
+
+    /* Shadows & Overlays */
+    --shadow-sm: rgba(0, 0, 0, 0.3);
+    --shadow-purple: rgba(139, 92, 246, 0.3);
+    --shadow-purple-strong: rgba(139, 92, 246, 0.5);
+    --border-subtle: rgba(71, 85, 105, 0.3);
+}
+
+/* Base reset and typography */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #073d1d;
+    color: white;
+}
+
+/* Card flip base */
+.card {
+    perspective: 1000px;
+    transform-style: preserve-3d;
+}
+
+.card-inner {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform var(--duration-normal) var(--ease-back);
+}
+
+.card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+}
+
+.card-back {
+    transform: rotateY(180deg);
+}
+
+/* Card interactions */
+.card-interactive {
+    transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.card-interactive:hover {
+    transform: translateY(-8px) scale(1.02);
+}
+
+.card-interactive:active {
+    transform: scale(0.98);
+}
+
+/* Button base */
+.btn-game {
+    transition: all var(--duration-fast) var(--ease-bounce);
+}
+
+.btn-game:hover {
+    transform: scale(1.05);
+}
+
+.btn-game:active {
+    transform: scale(0.95);
+}
+
+.btn-game:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Skeleton loading */
+.skeleton {
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    background: linear-gradient(90deg, #1a1a2e 25%, #2a2a4e 50%, #1a1a2e 75%);
+    background-size: 200% 100%;
+}
+
+@keyframes skeleton-pulse {
+
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+
+    50% {
+        opacity: 0.8;
+    }
+}
+
+/* Slide transitions */
+.slide-in-right {
+    animation: slide-in-right var(--duration-normal) var(--ease-bounce);
+}
+
+@keyframes slide-in-right {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.slide-in-up {
+    animation: slide-in-up var(--duration-normal) var(--ease-bounce);
+}
+
+@keyframes slide-in-up {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Mobile responsive base */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .h-8 {
+        height: 1.5rem !important;
+    }
+
+    .btn-game {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+
+    h1,
+    .text-2xl {
+        font-size: 1.25rem !important;
+    }
+
+    h2,
+    .text-xl {
+        font-size: 1rem !important;
+    }
+
+    .gap-6 {
+        gap: 1rem;
+    }
+
+    .gap-4 {
+        gap: 0.75rem;
+    }
+
+    .p-6 {
+        padding: 1rem;
+    }
+
+    .px-6,
+    .px-28 {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .py-10 {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .h-8 {
+        height: 1.25rem !important;
+    }
+
+    h1,
+    .text-2xl {
+        font-size: 1rem !important;
+    }
+
+    .btn-game {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .hidden-mobile {
+        display: none !important;
+    }
+
+    .flex-row-mobile {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .px-6,
+    .px-28 {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+
+/* Import component partials */
+@import 'components/game';
+@import 'components/overlays';
+@import 'components/common';
+@import 'components/wallet';
+@import 'components/modals';
+@import 'components/home';

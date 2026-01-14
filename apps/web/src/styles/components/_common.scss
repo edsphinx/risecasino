@@ -1,0 +1,680 @@
+/* ==========================================================================
+   SHARE VICTORY COMPONENT
+   ========================================================================== */
+
+.share-victory-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #1d9bf0, #1a8cd8);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(29, 155, 240, 0.3);
+}
+
+.share-victory-btn:hover {
+  background: linear-gradient(135deg, #1a8cd8, #1681c9);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(29, 155, 240, 0.4);
+}
+
+.share-victory-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(29, 155, 240, 0.3);
+}
+
+.share-icon {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .share-victory-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .share-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ==========================================================================
+   LOADING SCREEN COMPONENT
+   Casino-themed loading with chips and cards
+   ========================================================================== */
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f0a1e 0%, #1a1035 50%, #0d0818 100%);
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.loading-bg-glow {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(234, 179, 8, 0.15) 40%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(80px);
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  z-index: 1;
+}
+
+.loading-logo {
+  animation: logo-float 2.5s ease-in-out infinite;
+}
+
+@keyframes logo-float {
+
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-12px) scale(1.02);
+  }
+}
+
+.animated-logo {
+  width: 140px;
+  height: auto;
+  filter: drop-shadow(0 0 40px rgba(139, 92, 246, 0.6)) drop-shadow(0 0 20px rgba(234, 179, 8, 0.3));
+}
+
+.loading-chips {
+  display: flex;
+  gap: 0.5rem;
+  perspective: 200px;
+}
+
+.chip {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #eab308 0%, #ca8a04 100%);
+  border: 3px solid #fbbf24;
+  box-shadow: 0 2px 0 #92400e, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  animation: chip-bounce 1.2s ease-in-out infinite;
+  position: relative;
+}
+
+.chip::before {
+  content: '$';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: #92400e;
+}
+
+.chip:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.chip:nth-child(2) {
+  animation-delay: 0.15s;
+  background: linear-gradient(145deg, #8b5cf6 0%, #7c3aed 100%);
+  border-color: #a78bfa;
+}
+
+.chip:nth-child(2)::before {
+  content: '♦';
+  color: #5b21b6;
+}
+
+.chip:nth-child(3) {
+  animation-delay: 0.3s;
+  background: linear-gradient(145deg, #ef4444 0%, #dc2626 100%);
+  border-color: #f87171;
+}
+
+.chip:nth-child(3)::before {
+  content: '♥';
+  color: #7f1d1d;
+}
+
+@keyframes chip-bounce {
+
+  0%,
+  100% {
+    transform: translateY(0) rotateX(0deg);
+  }
+
+  50% {
+    transform: translateY(-20px) rotateX(15deg);
+  }
+}
+
+.loading-shimmer {
+  width: 200px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.shimmer-bar {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.6) 25%, rgba(234, 179, 8, 0.8) 50%, rgba(139, 92, 246, 0.6) 75%, transparent 100%);
+  animation: shimmer-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.loading-message {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.loading-cards {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.floating-card {
+  font-size: 1.8rem;
+  animation: card-dance 2s ease-in-out infinite;
+  text-shadow: 0 0 20px currentColor;
+}
+
+.floating-card:nth-child(1) {
+  color: #3b3b3b;
+  animation-delay: 0s;
+}
+
+.floating-card:nth-child(2) {
+  color: #ef4444;
+  animation-delay: 0.25s;
+}
+
+.floating-card:nth-child(3) {
+  color: #ef4444;
+  animation-delay: 0.5s;
+}
+
+.floating-card:nth-child(4) {
+  color: #3b3b3b;
+  animation-delay: 0.75s;
+}
+
+@keyframes card-dance {
+
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg) scale(1);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: translateY(-10px) rotate(5deg) scale(1.15);
+    opacity: 1;
+  }
+}
+
+.loading-spinner {
+  display: none;
+}
+
+/* ==========================================================================
+   APP LOADER COMPONENT
+   Casino neon theme with orbiting cards
+   ========================================================================== */
+
+.app-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0612 0%, #120a1e 50%, #0a0612 100%);
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.loader-neon-bg {
+  position: absolute;
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.1) 40%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(40px);
+  animation: neon-pulse 3s ease-in-out infinite;
+}
+
+@keyframes neon-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 0.9;
+  }
+}
+
+.cards-orbit {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  animation: orbit-rotate 8s linear infinite;
+}
+
+@keyframes orbit-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.orbit-card {
+  position: absolute;
+  font-size: 2rem;
+  text-shadow: 0 0 15px currentColor, 0 0 30px currentColor;
+  animation: card-counter-rotate 8s linear infinite;
+}
+
+@keyframes card-counter-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.card-spade {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #8b5cf6;
+}
+
+.card-heart {
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  color: #ec4899;
+  font-size: 1.3rem;
+}
+
+.card-diamond {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #f59e0b;
+}
+
+.card-club {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  color: #10b981;
+}
+
+.app-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  z-index: 1;
+}
+
+.loader-logo-wrapper {
+  animation: logo-neon-glow 2s ease-in-out infinite;
+}
+
+.loader-logo-wrapper .logo-full {
+  width: 240px;
+  max-width: 70vw;
+}
+
+.loader-logo-wrapper .logo-svg-full {
+  width: 100%;
+  height: auto;
+}
+
+@keyframes logo-neon-glow {
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.4)) drop-shadow(0 0 30px rgba(168, 85, 247, 0.2));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 25px rgba(236, 72, 153, 0.5)) drop-shadow(0 0 50px rgba(236, 72, 153, 0.3));
+  }
+}
+
+.loader-status {
+  color: #a78bfa;
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
+  margin: 0;
+}
+
+/* ==========================================================================
+   PAGE LOADER COMPONENT
+   Minimalist page transition
+   ========================================================================== */
+
+.page-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f0a1e 0%, #1a1035 50%, #0d0818 100%);
+  z-index: 9998;
+}
+
+.page-loader-glow {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(40px);
+}
+
+.page-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  z-index: 1;
+}
+
+.page-loader-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.loader-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a855f7, #ec4899);
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+.loader-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.loader-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loader-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+.page-loader-text {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ==========================================================================
+   FOOTER COMPONENT
+   Casino-themed footer with social links
+   ========================================================================== */
+
+.casino-footer {
+  background: linear-gradient(180deg, #0f0f1a 0%, #0a0a0f 100%);
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+  color: #94a3b8;
+  padding: 3rem 1rem 1rem;
+  margin-top: auto;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 2rem;
+}
+
+.footer-logo {
+  width: 240px;
+  height: auto;
+  margin-bottom: 0.75rem;
+}
+
+.footer-brand p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin: 0 0 1rem 0;
+}
+
+.footer-social {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.footer-social a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  color: #a78bfa;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.footer-social a:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: #a78bfa;
+  transform: translateY(-2px);
+}
+
+.footer-section h4 {
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.footer-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-section li {
+  margin-bottom: 0.5rem;
+}
+
+.footer-section a {
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: color 0.2s ease;
+}
+
+.footer-section a:hover {
+  color: #a78bfa;
+}
+
+.footer-responsible {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 1rem;
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.age-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+  border-radius: 50%;
+  color: white;
+  font-weight: 900;
+  font-size: 1rem;
+}
+
+.footer-responsible p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #fbbf24;
+}
+
+.footer-bottom {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(71, 85, 105, 0.3);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8rem;
+}
+
+.footer-bottom p {
+  margin: 0;
+}
+
+.contract-info a {
+  color: #a78bfa;
+  text-decoration: none;
+  font-family: monospace;
+}
+
+.contract-info a:hover {
+  text-decoration: underline;
+}
+
+.powered-by a {
+  color: #a78bfa;
+  text-decoration: none;
+}
+
+.powered-by a:hover {
+  text-decoration: underline;
+}
+
+/* Footer Responsive */
+@media (max-width: 900px) {
+  .footer-content {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .footer-content {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .footer-social {
+    justify-content: center;
+  }
+
+  .footer-responsible {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
