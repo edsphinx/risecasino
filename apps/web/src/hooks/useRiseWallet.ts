@@ -69,7 +69,13 @@ export function useRiseWallet(): UseRiseWalletReturn {
     if (connection.isConnected && !wasConnected) {
       setWasConnected(true);
 
-      // If user hasn't seen onboarding, show it
+      // If user already has a valid session key, don't show onboarding
+      if (sessionKey.hasSessionKey) {
+        logger.log('🔑 [useRiseWallet] Already has valid session key, skipping onboarding');
+        return;
+      }
+
+      // If user hasn't seen onboarding and hasn't skipped fast mode, show it
       if (!hasSeenOnboarding && !skipFastMode) {
         setShowOnboarding(true);
         return;
@@ -137,9 +143,9 @@ export function useRiseWallet(): UseRiseWalletReturn {
     return null;
   })();
 
-  // Combine disconnect to also revoke session key
-  const disconnect = async () => {
-    await sessionKey.revoke();
+  // Disconnect WITHOUT revoking session key
+  // Session keys persist across connections - only explicit revoke removes them
+  const disconnect = () => {
     connection.disconnect();
   };
 

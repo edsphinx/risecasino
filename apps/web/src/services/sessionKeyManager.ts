@@ -20,7 +20,7 @@ export type { TokenContext };
 
 // Configuration
 const SESSION_KEY_STORAGE_PREFIX = 'vyrejack_session_key';
-const SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const SESSION_DURATION_SECONDS = 100 * 365 * 24 * 60 * 60; // 100 years - session keys are persistent
 
 // Cache active key in memory
 let activeKeyPair: SessionKeyData | null = null;
