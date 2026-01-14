@@ -107,6 +107,41 @@ function isFinalState(state: number | undefined): boolean {
   );
 }
 
+/**
+ * Calculate blackjack hand value from card indices
+ * Card index format: 0-51 where (index % 13) gives rank (0=Ace, 1=2, ..., 12=King)
+ */
+function calculateLocalHandValue(cards: number[]): number {
+  if (!cards || cards.length === 0) return 0;
+
+  let value = 0;
+  let aces = 0;
+
+  for (const card of cards) {
+    const rank = card % 13; // 0=Ace, 1=2, ..., 9=10, 10=J, 11=Q, 12=K
+
+    if (rank === 0) {
+      // Ace
+      aces++;
+      value += 11;
+    } else if (rank >= 10) {
+      // Face cards (J, Q, K)
+      value += 10;
+    } else {
+      // Number cards (2-10)
+      value += rank + 1;
+    }
+  }
+
+  // Adjust aces from 11 to 1 if needed
+  while (value > 21 && aces > 0) {
+    value -= 10;
+    aces--;
+  }
+
+  return value;
+}
+
 // =============================================================================
 // HOOK
 // =============================================================================
@@ -235,13 +270,22 @@ export function useGameStateCasino(player: `0x${string}` | null): UseGameStateCa
           logger.log('[GameStateCasino] Using contract dealer cards:', dealerCards);
         }
 
-        // v4 contracts provide real values directly - no need to calculate!
-        const playerValue = event.playerFinalValue;
-        const dealerValue = event.dealerFinalValue;
+        // Use event values if provided, otherwise calculate locally from cards
+        // GamePlayed event doesn't include final values (they're 0), so we calculate
+        const playerValue =
+          event.playerFinalValue > 0
+            ? event.playerFinalValue
+            : calculateLocalHandValue(playerCards);
+        const dealerValue =
+          event.dealerFinalValue > 0
+            ? event.dealerFinalValue
+            : calculateLocalHandValue(dealerCards);
 
-        logger.log('[GameStateCasino] Using real values from contract:', {
+        logger.log('[GameStateCasino] Hand values (calculated if 0):', {
           playerValue,
           dealerValue,
+          eventPlayerValue: event.playerFinalValue,
+          eventDealerValue: event.dealerFinalValue,
           result: event.result,
           payout: event.payout.toString(),
         });
