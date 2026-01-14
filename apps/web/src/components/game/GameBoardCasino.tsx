@@ -33,6 +33,7 @@ import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
 import { SkeletonHand } from './SkeletonHand';
 import { MobileHistory } from './MobileHistory';
+import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
@@ -375,6 +376,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                 </div>
               )}
             </div>
+
+            {/* Desktop History - full details panel */}
+            <div className="hidden md:block">{wallet.isConnected && <GameHistory />}</div>
           </div>
 
           {/* Session Key Hint */}
@@ -384,8 +388,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             </div>
           )}
 
-          {/* Mobile History - shows last 3 game results */}
-          {wallet.isConnected && <MobileHistory />}
+          {/* Mobile History - shows last 3 game results (hidden on desktop) */}
+          <div className="md:hidden">{wallet.isConnected && <MobileHistory />}</div>
         </div>
       </main>
 
