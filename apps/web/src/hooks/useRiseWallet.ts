@@ -146,12 +146,16 @@ export function useRiseWallet(): UseRiseWalletReturn {
 
   // Handle onboarding dismissal
   const dismissOnboarding = useCallback(
-    async (enableFastMode: boolean) => {
+    async (enableFastMode: boolean): Promise<void> => {
+      // Close modal FIRST, regardless of what happens next
       setShowOnboarding(false);
       localStorage.setItem(ONBOARDING_SEEN_KEY, 'true');
 
       if (enableFastMode) {
-        await sessionKey.create();
+        // Fire-and-forget - don't block caller
+        sessionKey.create().catch((err) => {
+          logger.error('🔑 [useRiseWallet] Failed to create session key:', err);
+        });
       } else {
         localStorage.setItem(SKIP_FASTMODE_KEY, 'true');
         setSkipFastMode(true);
