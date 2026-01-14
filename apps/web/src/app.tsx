@@ -17,6 +17,7 @@ import { safeParseNumber, formatSessionTime } from './lib/formatters';
 const Home = lazy(() => import('./pages/Home'));
 const VyreJackUsdc = lazy(() => import('./pages/games/VyreJackUsdc'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
+const Admin = lazy(() => import('./pages/Admin'));
 
 function Header() {
   const [location, setLocation] = useLocation();
@@ -318,6 +319,7 @@ export function App() {
                 <Route path="/games/vyrejack-eth" component={VyreJackUsdc} />
                 <Route path="/games/vyrejack/eth" component={VyreJackUsdc} />
                 <Route path="/leaderboard" component={LeaderboardPage} />
+                <Route path="/admin" component={Admin} />
 
                 {/* Fallback to Home */}
                 <Route component={Home} />
