@@ -235,8 +235,7 @@ contract VyreJackCoreEventsTest is Test {
     }
 
     // ==================== GAME RESOLVED EVENT TESTS ====================
-    // NOTE: GameResolved is only emitted in forceResolveGame, not in normal game flow
-    // Normal game flow emits GamePlayed event instead
+    // GameResolved is now emitted in normal game flow alongside GamePlayed
 
     function test_GameResolvedEventOnPlayerWin() public {
         casino.playGame(player1, chipToken, 100e18);
@@ -249,29 +248,32 @@ contract VyreJackCoreEventsTest is Test {
         cards[3] = 7; // Dealer: 8 (total 18)
         vrf.fulfill(reqId, cards);
 
-        // Record logs to check GamePlayed was emitted (GameResolved is only for forceResolve)
+        // Record logs to check both GameResolved and GamePlayed
         vm.recordLogs();
 
         vm.prank(player1);
         game.stand();
 
-        // Check logs for GamePlayed event (the actual event emitted on normal game completion)
+        // Check logs for both events
         Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool foundGameResolved = false;
         bool foundGamePlayed = false;
         for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == keccak256("GameResolved(address,uint8,uint256,uint8,uint8)")) {
+                foundGameResolved = true;
+                assertEq(logs[i].topics[1], bytes32(uint256(uint160(player1))));
+            }
             if (logs[i].topics[0] == keccak256("GamePlayed(address,address,uint256,bool,uint256)"))
             {
                 foundGamePlayed = true;
-                assertEq(logs[i].topics[1], bytes32(uint256(uint160(player1))));
-                break;
             }
         }
-        assertTrue(foundGamePlayed, "GamePlayed event not found");
+        assertTrue(foundGameResolved, "GameResolved event not found on player win");
+        assertTrue(foundGamePlayed, "GamePlayed event not found on player win");
     }
 
     // ==================== PLAYER BUSTED EVENT TESTS ====================
-    // NOTE: PlayerBusted event is declared but not yet emitted in the contract
-    // Game completion emits GamePlayed event instead
+    // PlayerBusted is now properly emitted when player exceeds 21
 
     function test_PlayerBustedEventOnBust() public {
         casino.playGame(player1, chipToken, 100e18);
@@ -298,16 +300,25 @@ contract VyreJackCoreEventsTest is Test {
         vm.recordLogs();
         vrf.fulfill(hitReqId, hitCard);
 
-        // Check logs for GamePlayed event (emitted when player busts)
+        // Check logs for PlayerBusted event (now implemented!)
         Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool foundPlayerBusted = false;
+        bool foundGameResolved = false;
         bool foundGamePlayed = false;
         for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == keccak256("PlayerBusted(address,uint8)")) {
+                foundPlayerBusted = true;
+            }
+            if (logs[i].topics[0] == keccak256("GameResolved(address,uint8,uint256,uint8,uint8)")) {
+                foundGameResolved = true;
+            }
             if (logs[i].topics[0] == keccak256("GamePlayed(address,address,uint256,bool,uint256)"))
             {
                 foundGamePlayed = true;
-                break;
             }
         }
+        assertTrue(foundPlayerBusted, "PlayerBusted event not found on player bust");
+        assertTrue(foundGameResolved, "GameResolved event not found on player bust");
         assertTrue(foundGamePlayed, "GamePlayed event not found on player bust");
 
         // Game should be resolved (dealer wins via bust)
@@ -315,8 +326,7 @@ contract VyreJackCoreEventsTest is Test {
     }
 
     // ==================== DEALER BUSTED EVENT TESTS ====================
-    // NOTE: DealerBusted event is declared but not yet emitted in the contract
-    // Game completion emits GamePlayed event instead
+    // DealerBusted is now properly emitted when dealer exceeds 21
 
     function test_DealerBustedEventOnBust() public {
         casino.playGame(player1, chipToken, 100e18);
@@ -343,16 +353,25 @@ contract VyreJackCoreEventsTest is Test {
         vm.recordLogs();
         vrf.fulfill(dealerReqId, dealerCard);
 
-        // Check logs for GamePlayed event (emitted when dealer busts)
+        // Check logs for DealerBusted event (now implemented!)
         Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool foundDealerBusted = false;
+        bool foundGameResolved = false;
         bool foundGamePlayed = false;
         for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == keccak256("DealerBusted(address,uint8)")) {
+                foundDealerBusted = true;
+            }
+            if (logs[i].topics[0] == keccak256("GameResolved(address,uint8,uint256,uint8,uint8)")) {
+                foundGameResolved = true;
+            }
             if (logs[i].topics[0] == keccak256("GamePlayed(address,address,uint256,bool,uint256)"))
             {
                 foundGamePlayed = true;
-                break;
             }
         }
+        assertTrue(foundDealerBusted, "DealerBusted event not found on dealer bust");
+        assertTrue(foundGameResolved, "GameResolved event not found on dealer bust");
         assertTrue(foundGamePlayed, "GamePlayed event not found on dealer bust");
 
         // Player wins via dealer bust
@@ -378,16 +397,19 @@ contract VyreJackCoreEventsTest is Test {
         vm.prank(player1);
         game.stand();
 
-        // Check logs for CardDealt event with faceUp=true for dealer
-        // Note: DealerCardRevealed may not be emitted, but CardDealt with dealer's hidden card revealed is
+        // Check logs for DealerCardRevealed event (now implemented!)
         Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool foundDealerCardRevealed = false;
         bool foundCardDealt = false;
         for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == keccak256("DealerCardRevealed(address,uint8)")) {
+                foundDealerCardRevealed = true;
+            }
             if (logs[i].topics[0] == keccak256("CardDealt(address,uint8,bool,bool)")) {
                 foundCardDealt = true;
-                break;
             }
         }
+        assertTrue(foundDealerCardRevealed, "DealerCardRevealed event not found when standing");
         assertTrue(foundCardDealt, "CardDealt event not found when standing");
     }
 }
