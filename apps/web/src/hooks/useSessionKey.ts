@@ -42,13 +42,18 @@ export function useSessionKey(address: `0x${string}` | null): UseSessionKeyRetur
 
       logger.log('🔑 [useSessionKey] Restore check:', {
         address,
+        storageKey: `vyrejack_session_key_${address.toLowerCase()}`,
         found: !!existingKey,
+        publicKey: existingKey?.publicKey?.slice(0, 20),
+        expiry: existingKey ? new Date(existingKey.expiry * 1000).toLocaleString() : 'N/A',
       });
 
       if (existingKey) {
         setSessionData(existingKey);
+        logger.log('🔑 [useSessionKey] Session key restored successfully');
       } else {
         setSessionData(null);
+        logger.log('🔑 [useSessionKey] No local session key found - user needs to create one');
       }
     };
 
