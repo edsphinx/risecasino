@@ -13,9 +13,9 @@ pragma solidity ^0.8.28;
  * - Card Model: Infinite deck to prevent on-chain card counting attacks
  * ------------------------------------------------------------------------*/
 
-import { IVyreGame } from "../../interfaces/IVyreGame.sol";
-import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
-import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
+import { IVyreGame } from "./interfaces/IVyreGame.sol";
+import { IVRFConsumer } from "./interfaces/IVRFConsumer.sol";
+import { IVRFCoordinator } from "./interfaces/IVRFCoordinator.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {
@@ -517,6 +517,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         emit HandValue(player, playerValue, false, false);
 
         if (playerValue > 21) {
+            emit PlayerBusted(player, playerValue);
             _finishGame(player, GameState.DealerWin, 0);
         } else if (playerValue == 21 || game.isDoubled) {
             _playDealer(player);
@@ -544,6 +545,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         // After double, always go to dealer (auto-stand)
         if (playerValue > 21) {
             // Busted on double - lose double the bet
+            emit PlayerBusted(player, playerValue);
             _finishGame(player, GameState.DealerWin, 0);
         } else {
             // Auto-stand after double
@@ -573,6 +575,8 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         game.state = GameState.DealerTurn;
 
         if (game.dealerCards.length >= 2) {
+            // Reveal the hole card - dramatic moment for frontend
+            emit DealerCardRevealed(player, game.dealerCards[1]);
             emit CardDealt(player, game.dealerCards[1], true, true);
         }
 
@@ -651,6 +655,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         GameState result;
 
         if (dealerValue > 21) {
+            emit DealerBusted(player, dealerValue);
             result = GameState.PlayerWin;
             payout = effectiveBet * 2;
         } else if (playerValue > dealerValue) {
@@ -660,10 +665,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             result = GameState.DealerWin;
             payout = 0;
         } else {
-            // PUSH: House keeps the bet, player receives bonus XP instead of refund
-            // This is the "GOTCHA" mechanic - consolation XP with celebration animation
+            // PUSH: Traditional behavior - return bet to player
+            // House edge (2%) applied via settlePayout = ~98% refund
+            // This is fair for users while maintaining casino profitability
             result = GameState.Push;
-            payout = 0; // No refund on push - XP bonus handled by VyreCasino
+            payout = effectiveBet; // Refund the bet (minus house edge via settlePayout)
         }
 
         _finishGame(player, result, payout);
@@ -684,6 +690,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         if (payout > 0) {
             IVyreCasino(casino).settlePayout(player, token, payout);
         }
+
+        // Emit GameResolved for indexer/frontend stats
+        (uint8 playerFinalValue,) =
+            game.playerCards.length > 0 ? calculateHandValue(game.playerCards) : (uint8(0), false);
+        (uint8 dealerFinalValue,) =
+            game.dealerCards.length > 0 ? calculateHandValue(game.dealerCards) : (uint8(0), false);
+        emit GameResolved(player, result, payout, playerFinalValue, dealerFinalValue);
 
         // Emit event for indexer (use saved values since game will be deleted)
         emit IVyreGame.GamePlayed(player, token, bet, payout > bet, payout);
