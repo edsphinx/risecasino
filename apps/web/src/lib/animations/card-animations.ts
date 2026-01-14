@@ -120,67 +120,79 @@ export function animateCardHoverOut(cardElement: Element): gsap.core.Tween {
 }
 
 /**
- * Animate winning hand highlight
+ * Animate winning hand highlight (lift + scale - glow handled by CSS)
  */
 export function animateWinningHand(cards: Element[]): gsap.core.Timeline {
     const tl = createTimeline();
 
-    // Lift all cards slightly
+    // Lift all cards with stagger
     tl.to(cards, {
-        y: -15,
-        scale: 1.08,
+        y: -20,
+        scale: 1.1,
         stagger: 0.05,
-        duration: 0.3,
+        duration: 0.35,
         ease: 'power2.out',
     });
 
-    // Pulse glow effect
+    // Small pulse effect
     tl.to(cards, {
-        boxShadow: '0 0 30px rgba(16, 185, 129, 0.6)',
-        duration: 0.3,
-        repeat: 2,
-        yoyo: true,
+        scale: 1.15,
+        duration: 0.15,
+        ease: 'sine.inOut',
+    });
+    tl.to(cards, {
+        scale: 1.08,
+        duration: 0.15,
         ease: 'sine.inOut',
     });
 
-    // Settle back down
+    // Settle back slightly (still elevated)
     tl.to(cards, {
-        y: 0,
-        scale: 1,
-        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+        y: -10,
+        scale: 1.05,
         duration: 0.3,
         ease: EASINGS.smooth,
     });
+
+    // Note: glow effect is handled by CSS .hand-winner drop-shadow
 
     return tl;
 }
 
 /**
- * Animate losing hand (subtle shake and fade)
+ * Animate losing hand (subtle shake only - opacity handled by CSS)
  */
 export function animateLosingHand(cards: Element[]): gsap.core.Timeline {
     const tl = createTimeline();
 
-    // Quick shake
+    // Quick shake animation (3 shakes)
+    tl.to(cards, {
+        x: -8,
+        duration: 0.06,
+        ease: 'power1.inOut',
+    });
+    tl.to(cards, {
+        x: 8,
+        duration: 0.06,
+        ease: 'power1.inOut',
+    });
     tl.to(cards, {
         x: -5,
         duration: 0.05,
+        ease: 'power1.inOut',
     });
     tl.to(cards, {
         x: 5,
         duration: 0.05,
+        ease: 'power1.inOut',
     });
     tl.to(cards, {
         x: 0,
-        duration: 0.05,
-    });
-
-    // Fade slightly
-    tl.to(cards, {
-        opacity: 0.7,
-        duration: 0.3,
+        duration: 0.08,
         ease: 'power2.out',
     });
+
+    // Note: opacity and grayscale are handled by CSS .hand-loser class
 
     return tl;
 }
