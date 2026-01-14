@@ -32,6 +32,8 @@ import { GameResultOverlay } from './GameResultOverlay';
 import { CardDeck } from './CardDeck';
 import { Hand, HandValue } from './Hand';
 import { SkeletonHand } from './SkeletonHand';
+import { MobileHistory } from './MobileHistory';
+import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
 
 interface GameBoardCasinoProps {
@@ -101,12 +103,27 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   });
 
   // Trigger XP popup when game result shows (win/blackjack = more XP)
-  // In production, this should listen to XPAwarded events from useGameStateCasino
+  // Also save to game history
   const prevShowingResultRef = useRef(showingResult);
   if (showingResult && !prevShowingResultRef.current && lastGameResult) {
     const xpAmount =
       lastGameResult.result === 'blackjack' ? 100 : lastGameResult.result === 'win' ? 50 : 25;
     setTimeout(() => showXPPopup(xpAmount), 500);
+
+    // Save to game history (only if result is defined)
+    if (lastGameResult.result) {
+      StorageService.addGameToHistory({
+        result: lastGameResult.result,
+        bet: betAmount,
+        payout: lastGameResult.payout
+          ? (Number(lastGameResult.payout) / (tokenSymbol === 'USDC' ? 1e6 : 1e18)).toString()
+          : '0',
+        playerCards: lastGameResult.playerCards,
+        dealerCards: lastGameResult.dealerCards,
+        playerValue: lastGameResult.playerValue,
+        dealerValue: lastGameResult.dealerValue,
+      });
+    }
   }
   prevShowingResultRef.current = showingResult;
 
@@ -369,6 +386,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
               💡 Enable <strong>Fast Mode</strong> above for instant, popup-free gameplay!
             </div>
           )}
+
+          {/* Mobile History - shows last 3 game results */}
+          {wallet.isConnected && <MobileHistory />}
         </div>
       </main>
 
