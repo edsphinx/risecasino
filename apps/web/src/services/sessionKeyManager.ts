@@ -155,38 +155,108 @@ export async function ensureSessionKey(
   return createSessionKey(walletAddress, tokenContext);
 }
 
+/**
+ * Revoke orphaned remote keys - keys that exist in the relay but don't have
+ * a corresponding privateKey in localStorage. This happens when:
+ * - User clears localStorage/browser data
+ * - User clicks "Reset Wallet"
+ * - LocalStorage is corrupted
+ *
+ * This MUST be called before creating a new session key to prevent accumulation.
+ */
+async function revokeOrphanedRemoteKeys(walletAddress: string): Promise<number> {
+  const provider = getProvider();
+  if (!provider) return 0;
+
+  const localKey = getActiveSessionKey(walletAddress);
+  const localPublicKey = localKey?.publicKey?.toLowerCase();
+
+  try {
+    // Get all keys from the relay for this account
+    const keysResponse = await (provider as any).request({
+      method: 'wallet_getKeys',
+      params: [{ address: walletAddress }],
+    });
+
+    // Rise Testnet chain ID
+    const chainId = '0xaa39db';
+    const keys = keysResponse?.[chainId] || [];
+
+    if (keys.length === 0) {
+      return 0;
+    }
+
+    let revokedCount = 0;
+
+    for (const key of keys) {
+      // Skip admin keys
+      if (key.role === 'admin') continue;
+
+      // Skip the key that matches our local key (if we have one)
+      if (localPublicKey && key.publicKey?.toLowerCase() === localPublicKey) continue;
+
+      // Skip expired keys (relay cleanup)
+      const now = Math.floor(Date.now() / 1000);
+      const expiry = parseInt(key.expiry, 16);
+      if (expiry <= now) continue;
+
+      // This is an orphaned key - exists in relay but no local privateKey
+      logger.log(`🔑 [Session] Found orphaned key: ${key.publicKey.slice(0, 20)}... Revoking...`);
+
+      try {
+        await (provider as any).request({
+          method: 'wallet_revokePermissions',
+          params: [{ address: walletAddress, id: key.publicKey }],
+        });
+        revokedCount++;
+      } catch (err) {
+        logger.warn(`🔑 [Session] Failed to revoke orphaned key (continuing):`, err);
+      }
+    }
+
+    if (revokedCount > 0) {
+      logger.log(`🔑 [Session] Revoked ${revokedCount} orphaned keys from relay`);
+    }
+
+    return revokedCount;
+  } catch (err) {
+    logger.warn('🔑 [Session] Error checking for orphaned keys (non-critical):', err);
+    return 0;
+  }
+}
+
 export async function createSessionKey(
   walletAddress: string,
   tokenContext: TokenContext = 'ALL'
 ): Promise<SessionKeyData> {
   if (!walletAddress) throw new Error('Wallet address required');
 
-  // IMPORTANT: Revoke any existing session key from the RELAY first
-  // This prevents session key accumulation (found accounts with 150+ keys causing errors)
+  const provider = getProvider();
+  if (!provider) throw new Error('Wallet provider not available');
+
+  // IMPORTANT: Check for orphaned keys in relay (keys without local privateKey)
+  // This happens when localStorage is cleared but relay still has keys
+  // Must revoke these BEFORE creating a new key to prevent accumulation
+  await revokeOrphanedRemoteKeys(walletAddress);
+
+  // Also revoke any existing LOCAL session key from the relay
   const existingKey = getActiveSessionKey(walletAddress);
   if (existingKey && existingKey.publicKey) {
-    logger.log('🔑 [Session] Revoking old session key from relay before creating new one');
+    logger.log('🔑 [Session] Revoking current local session key from relay');
     try {
-      const provider = getProvider();
-      if (provider) {
-        await (provider as any).request({
-          method: 'wallet_revokePermissions',
-          params: [{ id: existingKey.publicKey }],
-        });
-        logger.log('🔑 [Session] Old session key revoked successfully');
-      }
+      await (provider as any).request({
+        method: 'wallet_revokePermissions',
+        params: [{ address: walletAddress, id: existingKey.publicKey }],
+      });
+      logger.log('🔑 [Session] Current local key revoked successfully');
     } catch (revokeErr) {
-      // Non-critical - continue with new key creation
-      logger.warn('🔑 [Session] Failed to revoke old key (non-critical):', revokeErr);
+      logger.warn('🔑 [Session] Failed to revoke current key (non-critical):', revokeErr);
     }
     // Clear local storage
     const storageKey = getStorageKey(walletAddress);
     localStorage.removeItem(storageKey);
     activeKeyPair = null;
   }
-
-  const provider = getProvider();
-  if (!provider) throw new Error('Wallet provider not available');
 
   logger.log(`🔑 [Session] Creating NEW session key for ${tokenContext}...`);
 
