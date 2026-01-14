@@ -18,7 +18,22 @@ import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
 import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+/// @notice Interface for VyreCasino to settle async game payouts
+interface IVyreCasino {
+    /// @notice Settle payout for async game (applies house fee)
+    /// @param player Player to receive payout
+    /// @param token Token to pay
+    /// @param amount Gross payout amount (before house edge)
+    function settlePayout(
+        address player,
+        address token,
+        uint256 amount
+    ) external;
+}
 
 /**
  * @title  VyreJackCore
@@ -259,7 +274,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         address _casino
     ) external initializer {
         // Note: __UUPSUpgradeable_init() removed - not needed in OpenZeppelin 5.x
-        
+
         if (_vrfCoordinator == address(0)) {
             coordinator = IVRFCoordinator(DEFAULT_VRF_COORDINATOR);
         } else {
@@ -440,7 +455,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
 
         // Return half the bet (effective bet if doubled, though you can't double then surrender)
         uint256 returnAmount = game.bet / 2;
-        
+
         _finishGame(msg.sender, GameState.DealerWin, returnAmount);
     }
 
@@ -645,8 +660,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             result = GameState.DealerWin;
             payout = 0;
         } else {
+            // PUSH: House keeps the bet, player receives bonus XP instead of refund
+            // This is the "GOTCHA" mechanic - consolation XP with celebration animation
             result = GameState.Push;
-            payout = effectiveBet; // Return the effective bet on push
+            payout = 0; // No refund on push - XP bonus handled by VyreCasino
         }
 
         _finishGame(player, result, payout);
@@ -658,16 +675,21 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 payout
     ) internal {
         Game storage game = games[player];
+        address token = game.token; // Save before delete
+        uint256 bet = game.bet; // Save before delete
         game.state = result;
 
-        // Emit event for indexer
-        emit IVyreGame.GamePlayed(player, game.token, game.bet, payout > game.bet, payout);
+        // Settle payout via VyreCasino (applies house fee on wins)
+        // For PUSH (payout=0), no settlement needed but XP will be awarded
+        if (payout > 0) {
+            IVyreCasino(casino).settlePayout(player, token, payout);
+        }
 
-        // Reset game
+        // Emit event for indexer (use saved values since game will be deleted)
+        emit IVyreGame.GamePlayed(player, token, bet, payout > bet, payout);
+
+        // Reset game state
         delete games[player];
-
-        // TODO: Notify VyreCasino of result for payout
-        // This requires VyreCasino to have a callback or poll mechanism
     }
 
     // ==================== CARD LOGIC ====================
@@ -736,15 +758,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         emit GameResolved(
             player,
             GameState.Idle,
-            0,  // No payout
-            0,  // playerFinalValue
-            0   // dealerFinalValue
+            0, // No payout
+            0, // playerFinalValue
+            0 // dealerFinalValue
         );
     }
 
-
     // ==================== ADMIN ====================
-
 
     function setCasino(
         address _casino
@@ -805,7 +825,9 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
      * @dev Only owner can authorize upgrades
      * @param newImplementation Address of the new implementation contract
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {
         // Owner authorization is the only check needed
     }
 
