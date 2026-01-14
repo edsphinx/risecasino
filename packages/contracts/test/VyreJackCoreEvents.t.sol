@@ -189,9 +189,9 @@ contract VyreJackCoreEventsTest is Test {
         assertEq(amount, 250e18); // 2.5x bet for blackjack
     }
 
-    function test_NoSettlePayoutCalledOnPush() public {
-        // NOTE: PUSH now gives 0 payout (XP-only, no refund) - this is the GOTCHA mechanic
-        // Start game
+    function test_SettlePayoutCalledOnPush() public {
+        // PUSH now returns bet refund (traditional behavior)
+        // House edge (2%) applied via settlePayout
         casino.playGame(player1, chipToken, 100e18);
         uint256 reqId = vrf.getLastRequestId();
 
@@ -207,8 +207,10 @@ contract VyreJackCoreEventsTest is Test {
         vm.prank(player1);
         game.stand();
 
-        // Verify NO payout on push (XP-only, house keeps bet)
-        assertEq(casino.getPayoutCallCount(), 0);
+        // Verify payout called with bet amount (house edge applied by casino)
+        assertEq(casino.getPayoutCallCount(), 1);
+        (,, uint256 amount) = casino.getLastPayoutCall();
+        assertEq(amount, 100e18); // Full bet returned (house edge applied by casino)
     }
 
     function test_NoSettlePayoutOnDealerWin() public {

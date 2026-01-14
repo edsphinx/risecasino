@@ -660,10 +660,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             result = GameState.DealerWin;
             payout = 0;
         } else {
-            // PUSH: House keeps the bet, player receives bonus XP instead of refund
-            // This is the "GOTCHA" mechanic - consolation XP with celebration animation
+            // PUSH: Traditional behavior - return bet to player
+            // House edge (2%) applied via settlePayout = ~98% refund
+            // This is fair for users while maintaining casino profitability
             result = GameState.Push;
-            payout = 0; // No refund on push - XP bonus handled by VyreCasino
+            payout = effectiveBet; // Refund the bet (minus house edge via settlePayout)
         }
 
         _finishGame(player, result, payout);
