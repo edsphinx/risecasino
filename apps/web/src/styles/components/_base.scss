@@ -1,0 +1,215 @@
+// ==========================================================================
+// BASE STYLES - Core reset, typography, CSS variables
+// ==========================================================================
+
+
+
+
+// Base reset
+* {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #073d1d;
+    color: white;
+}
+
+// CSS Custom Properties (for runtime theming)
+:root {
+    // Timing
+    --ease-bounce: #{$ease-bounce};
+    --ease-smooth: #{$ease-smooth};
+    --ease-back: #{$ease-back};
+    --duration-fast: #{$duration-fast};
+    --duration-normal: #{$duration-normal};
+    --duration-slow: #{$duration-slow};
+
+    // Brand Colors
+    --color-primary: #{$color-primary};
+    --color-primary-light: #{$color-primary-light};
+    --color-primary-dark: #{$color-primary-dark};
+    --color-accent: #{$color-accent};
+    --color-gold: #{$color-gold};
+    --color-success: #{$color-success};
+    --color-success-light: #{$color-success-light};
+    --color-error: #{$color-error};
+    --color-error-dark: #{$color-error-dark};
+    --color-teal: #{$color-teal};
+
+    // Neutral Colors
+    --color-text: #{$color-text};
+    --color-text-muted: #{$color-text-muted};
+    --color-text-dim: #{$color-text-dim};
+    --color-bg-dark: #{$color-bg-dark};
+    --color-bg-card: #{$color-bg-card};
+
+    // Shadows & Overlays
+    --shadow-sm: #{$shadow-sm};
+    --shadow-purple: #{$shadow-purple};
+    --shadow-purple-strong: #{$shadow-purple-strong};
+    --border-subtle: #{$border-subtle};
+}
+
+// ---------- Base Card Flip ----------
+.card {
+    perspective: 1000px;
+    transform-style: preserve-3d;
+}
+
+.card-inner {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform var(--duration-normal) var(--ease-back);
+}
+
+.card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+}
+
+.card-back {
+    transform: rotateY(180deg);
+}
+
+// ---------- Card Interactions ----------
+.card-interactive {
+    transition: transform var(--duration-fast) var(--ease-bounce);
+
+    &:hover {
+        transform: translateY(-8px) scale(1.02);
+    }
+
+    &:active {
+        transform: scale(0.98);
+    }
+}
+
+// ---------- Button Base ----------
+.btn-game {
+    transition: all var(--duration-fast) var(--ease-bounce);
+
+    &:hover {
+        transform: scale(1.05);
+    }
+
+    &:active {
+        transform: scale(0.95);
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+}
+
+// ---------- Loading Skeleton ----------
+.skeleton {
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    background: linear-gradient(90deg, #1a1a2e 25%, #2a2a4e 50%, #1a1a2e 75%);
+    background-size: 200% 100%;
+}
+
+// ---------- Slide Transitions ----------
+.slide-in-right {
+    animation: slide-in-right var(--duration-normal) var(--ease-bounce);
+}
+
+.slide-in-up {
+    animation: slide-in-up var(--duration-normal) var(--ease-bounce);
+}
+
+// ---------- Mobile Responsive ----------
+@include respond(md) {
+    .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .h-8 {
+        height: 1.5rem !important;
+    }
+
+    .btn-game {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+
+    h1,
+    .text-2xl {
+        font-size: 1.25rem !important;
+    }
+
+    h2,
+    .text-xl {
+        font-size: 1rem !important;
+    }
+
+    .gap-6 {
+        gap: 1rem;
+    }
+
+    .gap-4 {
+        gap: 0.75rem;
+    }
+
+    .p-6 {
+        padding: 1rem;
+    }
+
+    .px-6,
+    .px-28 {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .py-10 {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .h-8 {
+        height: 1.25rem !important;
+    }
+
+    h1,
+    .text-2xl {
+        font-size: 1rem !important;
+    }
+
+    .btn-game {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .hidden-mobile {
+        display: none !important;
+    }
+
+    .flex-row-mobile {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .px-6,
+    .px-28 {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+}

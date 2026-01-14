@@ -1,0 +1,107 @@
+// ==========================================================================
+// SASS MIXINS - Reusable patterns
+// ==========================================================================
+
+
+
+// Glassmorphism card effect
+@mixin glass-card($bg: $color-bg-card, $border: $shadow-purple) {
+    background: $bg;
+    backdrop-filter: blur(8px);
+    border: 1px solid $border;
+    border-radius: 12px;
+}
+
+// Gradient text effect
+@mixin gradient-text($from: $color-primary, $to: $color-accent) {
+    background: linear-gradient(135deg, $from, $to);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+// Neon glow effect
+@mixin neon-glow($color: $color-primary, $intensity: 0.4) {
+    box-shadow: 0 0 20px rgba($color, $intensity);
+}
+
+// Button base styles
+@mixin btn-base {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $duration-fast $ease-smooth;
+    border: none;
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+// Primary button gradient
+@mixin btn-primary {
+    @include btn-base;
+    background: linear-gradient(135deg, $color-primary 0%, $color-accent 100%);
+    color: white;
+    box-shadow: 0 4px 20px $shadow-purple;
+
+    &:hover:not(:disabled) {
+        transform: scale(1.02);
+        box-shadow: 0 6px 25px $shadow-purple-strong;
+    }
+}
+
+// Responsive breakpoint mixin
+@mixin respond($bp) {
+    @if $bp ==sm {
+        @media (max-width: $bp-sm) {
+            @content;
+        }
+    }
+
+    @else if $bp ==md {
+        @media (max-width: $bp-md) {
+            @content;
+        }
+    }
+
+    @else if $bp ==lg {
+        @media (max-width: $bp-lg) {
+            @content;
+        }
+    }
+
+    @else if $bp ==xl {
+        @media (max-width: $bp-xl) {
+            @content;
+        }
+    }
+}
+
+// Flex center shorthand
+@mixin flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+// Absolute center
+@mixin absolute-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+// Text truncate
+@mixin truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
