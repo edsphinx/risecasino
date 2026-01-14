@@ -8,6 +8,7 @@ import { VyreTreasury } from "../src/core/VyreTreasury.sol";
 import { IVyreGame } from "../src/interfaces/IVyreGame.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title MockCHIP
@@ -144,8 +145,13 @@ contract VyreCasinoIntegrationTest is Test {
         // Set casino as treasury operator
         treasury.setOperator(address(casino));
 
-        // Deploy Game
-        game = new VyreJackCore(address(vrf), address(casino));
+        // Deploy Game (UUPS upgradeable pattern)
+        VyreJackCore gameImpl = new VyreJackCore();
+        bytes memory initData = abi.encodeWithSelector(
+            VyreJackCore.initialize.selector, address(vrf), address(casino)
+        );
+        ERC1967Proxy gameProxy = new ERC1967Proxy(address(gameImpl), initData);
+        game = VyreJackCore(address(gameProxy));
         vrf.setGame(address(game));
 
         // Register game in casino
@@ -204,7 +210,13 @@ contract VyreCasinoIntegrationTest is Test {
     }
 
     function test_RevertIfGameNotRegistered() public {
-        VyreJackCore unregisteredGame = new VyreJackCore(address(vrf), address(casino));
+        // Deploy unregistered game (UUPS pattern)
+        VyreJackCore unregImpl = new VyreJackCore();
+        bytes memory initData = abi.encodeWithSelector(
+            VyreJackCore.initialize.selector, address(vrf), address(casino)
+        );
+        ERC1967Proxy unregProxy = new ERC1967Proxy(address(unregImpl), initData);
+        VyreJackCore unregisteredGame = VyreJackCore(address(unregProxy));
 
         vm.prank(player1);
         vm.expectRevert("VyreCasino: game not registered");
@@ -241,7 +253,13 @@ contract VyreCasinoIntegrationTest is Test {
     // ==================== ADMIN TESTS ====================
 
     function test_RegisterGame() public {
-        VyreJackCore newGame = new VyreJackCore(address(vrf), address(casino));
+        // Deploy new game (UUPS pattern)
+        VyreJackCore newGameImpl = new VyreJackCore();
+        bytes memory initData = abi.encodeWithSelector(
+            VyreJackCore.initialize.selector, address(vrf), address(casino)
+        );
+        ERC1967Proxy newGameProxy = new ERC1967Proxy(address(newGameImpl), initData);
+        VyreJackCore newGame = VyreJackCore(address(newGameProxy));
 
         casino.registerGame(address(newGame));
         assertTrue(casino.registeredGames(address(newGame)));
@@ -957,7 +975,13 @@ contract VyreJackCoreSecurityTest is Test {
 
     function setUp() public {
         vrf = new MockVRF();
-        game = new VyreJackCore(address(vrf), casino);
+
+        // Deploy Game (UUPS upgradeable pattern)
+        VyreJackCore gameImpl = new VyreJackCore();
+        bytes memory initData =
+            abi.encodeWithSelector(VyreJackCore.initialize.selector, address(vrf), casino);
+        ERC1967Proxy gameProxy = new ERC1967Proxy(address(gameImpl), initData);
+        game = VyreJackCore(address(gameProxy));
         vrf.setGame(address(game));
 
         game.setBetLimits(chipToken, 1e18, 1000e18);
@@ -1006,7 +1030,7 @@ contract VyreJackCoreSecurityTest is Test {
     function test_RevertForceResolveGame_NotOwner() public {
         vm.prank(attacker);
         vm.expectRevert("VyreJackCore: only owner");
-        game.forceResolveGame(address(0x1));
+        game.forceResolveGame(address(0x1), "test reason");
     }
 
     // ==================== UUPS UPGRADE ====================
@@ -1018,38 +1042,9 @@ contract VyreJackCoreSecurityTest is Test {
     }
 
     // ==================== VRF TIMEOUT ====================
+    // VRF_TIMEOUT constant was removed in V2 - tests skipped
 
-    function test_VRFTimeout_Constant() public view {
-        assertEq(game.VRF_TIMEOUT(), 2 minutes);
-    }
-
-    function test_RetryVRF_RequiresTimeout() public {
-        // Start a game
-        vm.prank(casino);
-        game.play(
-            address(0x1), IVyreGame.BetInfo({ token: chipToken, amount: 100e18, chipTier: 0 }), ""
-        );
-
-        // Try to retry immediately - should fail
-        vm.prank(address(0x1));
-        vm.expectRevert("VyreJackCore: timeout not reached");
-        game.retryVRF();
-    }
-
-    function test_RetryVRF_WorksAfterTimeout() public {
-        address player = address(0x1);
-
-        // Start a game
-        vm.prank(casino);
-        game.play(player, IVyreGame.BetInfo({ token: chipToken, amount: 100e18, chipTier: 0 }), "");
-
-        // Warp past timeout
-        vm.warp(block.timestamp + 2 minutes + 1);
-
-        // Now retry should work
-        vm.prank(player);
-        game.retryVRF();
-    }
+    // retryVRF tests removed - function was removed in V2 refactor
 }
 
 /**

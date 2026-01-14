@@ -7,6 +7,7 @@ import { VyreCasino } from "../src/core/VyreCasino.sol";
 import { VyreTreasury } from "../src/core/VyreTreasury.sol";
 import { IVyreGame } from "../src/interfaces/IVyreGame.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title VyreCasinoForkTest
@@ -51,8 +52,12 @@ contract VyreCasinoForkTest is Test {
         // Set casino as treasury operator
         treasury.setOperator(address(casino));
 
-        // Deploy Game with real Rise VRF
-        game = new VyreJackCore(RISE_VRF, address(casino));
+        // Deploy Game with real Rise VRF (UUPS pattern)
+        VyreJackCore gameImpl = new VyreJackCore();
+        bytes memory initData =
+            abi.encodeWithSelector(VyreJackCore.initialize.selector, RISE_VRF, address(casino));
+        ERC1967Proxy gameProxy = new ERC1967Proxy(address(gameImpl), initData);
+        game = VyreJackCore(address(gameProxy));
 
         // Register game
         casino.registerGame(address(game));
