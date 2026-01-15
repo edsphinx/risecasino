@@ -160,7 +160,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   const showingResult = useGameStore(selectShowingResult);
   const {
     setLastGameResult,
-    clearLastResult: storeCllearResult,
+    clearLastResult: storeClearResult,
     addCard,
     resetCards,
   } = useGameStore();
@@ -312,9 +312,9 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   );
 
   const clearLastResult = useCallback(() => {
-    storeCllearResult();
+    storeClearResult();
     cardSnapshotRef.current = null;
-  }, [storeCllearResult]);
+  }, [storeClearResult]);
 
   // WebSocket listener for game events
   const { isConnected: isEventConnected } = useGameEvents(player, {
