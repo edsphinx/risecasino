@@ -22,7 +22,7 @@ import { useState, useMemo, useCallback, useRef } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { useVyreCasinoActions } from '@/hooks/useVyreCasinoActions';
 import { useTokenBalance } from '@/hooks/useTokenBalance';
-import { useGameStateCasino } from '@/hooks/useGameStateCasino';
+import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
@@ -81,7 +81,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     refetch: refetchGame,
     snapshotCards,
     accumulatedCards,
-  } = useGameStateCasino(wallet.address as `0x${string}` | null);
+  } = useGameState(wallet.address as `0x${string}` | null);
 
   // XP popup when game ends
   const showXPPopup = useCallback((xp: number) => {

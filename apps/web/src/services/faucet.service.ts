@@ -108,7 +108,7 @@ async function sendClaimTransaction(address: `0x${string}`): Promise<`0x${string
 
   // Import dynamically to avoid circular dependencies
   const { getProvider } = await import('@/lib/riseWallet');
-  const { signWithSessionKey, getActiveSessionKey } = await import('@/services/sessionKeyManager');
+  const { signWithSessionKey, getActiveSessionKey } = await import('@/services/sessionKey.service');
   const { encodeFunctionData } = await import('viem');
 
   const provider = getProvider();

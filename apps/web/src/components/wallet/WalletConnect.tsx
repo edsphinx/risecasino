@@ -120,7 +120,7 @@ export function WalletConnect({
     try {
       if (deepClean) {
         logger.log('[WalletConnect] Starting deep clean (revoking remote session keys)...');
-        const { revokeAllRemoteSessionKeys } = await import('@/services/sessionKeyManager');
+        const { revokeAllRemoteSessionKeys } = await import('@/services/sessionKey.service');
         const result = await revokeAllRemoteSessionKeys(account);
         logger.log(
           `[WalletConnect] Deep clean complete: ${result.revoked} revoked, ${result.failed} failed`

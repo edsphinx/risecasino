@@ -1,35 +1,29 @@
 /**
- * useGameEvents - WebSocket-based event listener for game events
+ * useGameEvents - WebSocket-based event listener for VyreJackCore games
  *
  * Listens for:
- * - GameEnded: When game finishes (from VRF callback)
- * - CardDealt: When a card is dealt (keeps hand cache updated in real-time)
+ * - GameResolved: When game finishes with final values (v4 contracts)
+ * - CardDealt: When a card is dealt (real-time card tracking)
+ * - PlayerBusted: When player busts (for animations)
+ * - DealerBusted: When dealer busts (for animations)
+ * - DealerCardRevealed: When hole card is revealed
  */
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPublicClient, webSocket } from 'viem';
-import { riseTestnet, VYREJACK_ABI, VYREJACK_ADDRESS } from '@/lib/contract';
+import { riseTestnet, VYREJACKCORE_ADDRESS, VYRECASINO_ADDRESS } from '@/lib/contract';
+import { VYREJACKCORE_ABI, VYRECASINO_ABI } from '@vyrejack/shared';
 import { logger } from '@/lib/logger';
 import type { GameResult } from '@vyrejack/shared';
 
 // Rise Chain Testnet WebSocket URL
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
 
-// GameState enum values from contract
-const GameStateToResult: Record<number, GameResult> = {
-  5: 'win', // PlayerWin
-  6: 'lose', // DealerWin
-  7: 'push', // Push
-  8: 'blackjack', // PlayerBlackjack
-};
-
-export interface GameEndEvent {
+export interface GameResolvedEvent {
   result: GameResult;
   payout: bigint;
   playerFinalValue: number;
   dealerFinalValue: number;
-  playerCardCount: number;
-  dealerCardCount: number;
 }
 
 export interface CardDealtEvent {
@@ -38,38 +32,55 @@ export interface CardDealtEvent {
   faceUp: boolean;
 }
 
-interface GameEventsCallbacks {
-  onGameEnd: (event: GameEndEvent) => void;
-  onCardDealt?: (event: CardDealtEvent) => void;
+export interface BustedEvent {
+  finalValue: number;
 }
 
+export interface CardRevealedEvent {
+  card: number;
+}
+
+export interface XPAwardedEvent {
+  amount: bigint;
+}
+
+interface GameEventsCasinoCallbacks {
+  onGameResolved: (event: GameResolvedEvent) => void;
+  onCardDealt?: (event: CardDealtEvent) => void;
+  onPlayerBusted?: (event: BustedEvent) => void;
+  onDealerBusted?: (event: BustedEvent) => void;
+  onDealerCardRevealed?: (event: CardRevealedEvent) => void;
+  onXPAwarded?: (event: XPAwardedEvent) => void;
+}
+
+/**
+ * Hook for WebSocket-based VyreJackCore event listening (v4 contracts)
+ */
 export function useGameEvents(
   playerAddress: `0x${string}` | null,
-  callbacks: GameEventsCallbacks | ((event: GameEndEvent) => void)
+  callbacks: GameEventsCasinoCallbacks
 ) {
   const [isConnected, setIsConnected] = useState(false);
-  const unwatchGameEndedRef = useRef<(() => void) | null>(null);
-  const unwatchCardDealtRef = useRef<(() => void) | null>(null);
+  const unwatchRefs = useRef<(() => void)[]>([]);
   const clientRef = useRef<ReturnType<typeof createPublicClient> | null>(null);
 
-  // Normalize callbacks
-  const normalizedCallbacks =
-    typeof callbacks === 'function' ? { onGameEnd: callbacks } : callbacks;
+  // Deduplication: track processed events by txHash+logIndex
+  const processedEvents = useRef<Set<string>>(new Set());
 
   // Stable callback refs
-  const onGameEndRef = useRef(normalizedCallbacks.onGameEnd);
-  const onCardDealtRef = useRef(normalizedCallbacks.onCardDealt);
-  onGameEndRef.current = normalizedCallbacks.onGameEnd;
-  onCardDealtRef.current = normalizedCallbacks.onCardDealt;
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
 
-  // Start watching for events
   useEffect(() => {
     if (!playerAddress) {
       setIsConnected(false);
       return;
     }
 
-    logger.log('[GameEvents] Starting WebSocket event monitoring for:', playerAddress);
+    // Clear processed events on new connection
+    processedEvents.current.clear();
+
+    logger.log('[GameEventsCasino] Starting WebSocket for:', playerAddress);
 
     try {
       // Create WebSocket client
@@ -79,105 +90,111 @@ export function useGameEvents(
       });
       clientRef.current = client;
 
-      // Watch for GameEnded events
-      const unwatchGameEnded = client.watchContractEvent({
-        address: VYREJACK_ADDRESS,
-        abi: VYREJACK_ABI,
-        eventName: 'GameEnded',
-        args: {
-          player: playerAddress,
-        },
+      // Watch for GamePlayed events (V6 - actual event emitted by contract)
+      // Note: Contract emits IVyreGame.GamePlayed, NOT GameResolved
+      // Don't filter by player in subscription - filter in callback for reliability
+      const unwatchGamePlayed = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'GamePlayed',
         onLogs: (logs) => {
-          logger.log('[GameEvents] Received GameEnded events:', logs.length);
+          logger.log('[GameEventsCasino] GamePlayed ALL events:', logs.length);
 
           for (const log of logs) {
+            // GamePlayed signature: (player, token, bet, won, payout)
             const args = log.args as {
               player: `0x${string}`;
-              result: number | bigint;
+              token: `0x${string}`;
+              bet: bigint;
+              won: boolean;
               payout: bigint;
-              playerFinalValue: number | bigint;
-              dealerFinalValue: number | bigint;
-              playerCardCount: number | bigint;
-              dealerCardCount: number | bigint;
             };
-            const resultNum =
-              typeof args.result === 'bigint' ? Number(args.result) : (args.result as number);
-            const result = GameStateToResult[resultNum];
 
-            const playerFinalValue =
-              typeof args.playerFinalValue === 'bigint'
-                ? Number(args.playerFinalValue)
-                : args.playerFinalValue;
-            const dealerFinalValue =
-              typeof args.dealerFinalValue === 'bigint'
-                ? Number(args.dealerFinalValue)
-                : args.dealerFinalValue;
-            const playerCardCount =
-              typeof args.playerCardCount === 'bigint'
-                ? Number(args.playerCardCount)
-                : args.playerCardCount;
-            const dealerCardCount =
-              typeof args.dealerCardCount === 'bigint'
-                ? Number(args.dealerCardCount)
-                : args.dealerCardCount;
+            // Filter by player in callback (more reliable than topic filter)
+            if (args.player?.toLowerCase() !== playerAddress?.toLowerCase()) {
+              logger.log('[GameEventsCasino] GamePlayed for other player:', args.player);
+              continue;
+            }
 
-            logger.log('[GameEvents] GameEnded:', {
-              player: args.player,
-              result,
-              payout: args.payout,
-              playerFinalValue,
-              dealerFinalValue,
-              playerCardCount,
-              dealerCardCount,
+            // Deduplicate: skip if already processed
+            const eventKey = `${log.transactionHash}-${log.logIndex}`;
+            if (processedEvents.current.has(eventKey)) {
+              logger.log('[GameEventsCasino] Skipping duplicate GamePlayed:', eventKey);
+              continue;
+            }
+            processedEvents.current.add(eventKey);
+
+            // Map 'won' boolean to GameResult
+            // Note: GamePlayed doesn't distinguish blackjack from regular win
+            const gameResult: GameResult = args.won
+              ? args.payout > args.bet * 2n
+                ? 'blackjack'
+                : 'win'
+              : args.payout === args.bet
+                ? 'push'
+                : 'lose';
+
+            logger.log('[GameEventsCasino] GamePlayed for US:', {
+              result: gameResult,
+              won: args.won,
+              bet: args.bet.toString(),
+              payout: args.payout.toString(),
             });
 
-            if (result) {
-              onGameEndRef.current({
-                result,
-                payout: args.payout,
-                playerFinalValue,
-                dealerFinalValue,
-                playerCardCount,
-                dealerCardCount,
-              });
-            }
+            // Note: playerFinalValue and dealerFinalValue are not in GamePlayed event
+            // They will be calculated from accumulated CardDealt events in useGameStateCasino
+            callbacksRef.current.onGameResolved({
+              result: gameResult,
+              payout: args.payout,
+              playerFinalValue: 0, // Will be filled from card accumulation
+              dealerFinalValue: 0, // Will be filled from card accumulation
+            });
           }
         },
         onError: (error) => {
-          logger.error('[GameEvents] GameEnded WebSocket error:', error);
+          logger.error('[GameEventsCasino] GamePlayed error:', error);
         },
       });
-      unwatchGameEndedRef.current = unwatchGameEnded;
+      unwatchRefs.current.push(unwatchGamePlayed);
 
-      // Watch for CardDealt events (to keep hand cache updated in real-time)
+      // Watch for CardDealt events
       const unwatchCardDealt = client.watchContractEvent({
-        address: VYREJACK_ADDRESS,
-        abi: VYREJACK_ABI,
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
         eventName: 'CardDealt',
         args: {
           player: playerAddress,
         },
         onLogs: (logs) => {
-          logger.log('[GameEvents] Received CardDealt events:', logs.length);
+          logger.log('[GameEventsCasino] CardDealt events:', logs.length);
 
           for (const log of logs) {
+            // Deduplicate: skip if already processed
+            const eventKey = `${log.transactionHash}-${log.logIndex}`;
+            if (processedEvents.current.has(eventKey)) {
+              logger.log('[GameEventsCasino] Skipping duplicate CardDealt:', eventKey);
+              continue;
+            }
+            processedEvents.current.add(eventKey);
+
             const args = log.args as {
               player: `0x${string}`;
               card: number | bigint;
               isDealer: boolean;
               faceUp: boolean;
             };
-            const cardNum = typeof args.card === 'bigint' ? Number(args.card) : args.card;
 
-            logger.log('[GameEvents] CardDealt:', {
-              card: cardNum,
+            const card = typeof args.card === 'bigint' ? Number(args.card) : args.card;
+
+            logger.log('[GameEventsCasino] CardDealt:', {
+              card,
               isDealer: args.isDealer,
               faceUp: args.faceUp,
             });
 
-            if (onCardDealtRef.current) {
-              onCardDealtRef.current({
-                card: cardNum,
+            if (callbacksRef.current.onCardDealt) {
+              callbacksRef.current.onCardDealt({
+                card,
                 isDealer: args.isDealer,
                 faceUp: args.faceUp,
               });
@@ -185,29 +202,117 @@ export function useGameEvents(
           }
         },
         onError: (error) => {
-          logger.error('[GameEvents] CardDealt WebSocket error:', error);
+          logger.error('[GameEventsCasino] CardDealt error:', error);
         },
       });
-      unwatchCardDealtRef.current = unwatchCardDealt;
+      unwatchRefs.current.push(unwatchCardDealt);
+
+      // Watch for PlayerBusted events (v4 - for bust animations)
+      const unwatchPlayerBusted = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'PlayerBusted',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = log.args as { finalValue: number };
+            logger.log('[GameEventsCasino] PlayerBusted:', args.finalValue);
+            if (callbacksRef.current.onPlayerBusted) {
+              callbacksRef.current.onPlayerBusted({ finalValue: args.finalValue });
+            }
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] PlayerBusted error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchPlayerBusted);
+
+      // Watch for DealerBusted events (v4 - for bust animations)
+      const unwatchDealerBusted = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'DealerBusted',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = log.args as { finalValue: number };
+            logger.log('[GameEventsCasino] DealerBusted:', args.finalValue);
+            if (callbacksRef.current.onDealerBusted) {
+              callbacksRef.current.onDealerBusted({ finalValue: args.finalValue });
+            }
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] DealerBusted error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchDealerBusted);
+
+      // Watch for DealerCardRevealed events (v4 - for hole card reveal animation)
+      const unwatchDealerRevealed = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'DealerCardRevealed',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = log.args as { card: number };
+            logger.log('[GameEventsCasino] DealerCardRevealed:', args.card);
+            if (callbacksRef.current.onDealerCardRevealed) {
+              callbacksRef.current.onDealerCardRevealed({ card: args.card });
+            }
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] DealerCardRevealed error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchDealerRevealed);
+
+      // Watch for XPAwarded events from VyreCasino (v4 - for XP popup)
+      const unwatchXPAwarded = client.watchContractEvent({
+        address: VYRECASINO_ADDRESS,
+        abi: VYRECASINO_ABI,
+        eventName: 'XPAwarded',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = (log as any).args as { player: `0x${string}`; amount: bigint };
+            logger.log('[GameEventsCasino] XPAwarded:', args.amount.toString());
+            if (callbacksRef.current.onXPAwarded) {
+              callbacksRef.current.onXPAwarded({ amount: args.amount });
+            }
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] XPAwarded error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchXPAwarded);
 
       setIsConnected(true);
-      logger.log('[GameEvents] WebSocket connected successfully (GameEnded + CardDealt)');
+      logger.log('[GameEventsCasino] WebSocket connected - listening to 6 event types');
     } catch (error) {
-      logger.error('[GameEvents] Failed to start WebSocket:', error);
+      logger.error('[GameEventsCasino] Failed to start WebSocket:', error);
       setIsConnected(false);
     }
 
     // Cleanup
     return () => {
-      logger.log('[GameEvents] Stopping WebSocket monitoring');
-      if (unwatchGameEndedRef.current) {
-        unwatchGameEndedRef.current();
-        unwatchGameEndedRef.current = null;
+      logger.log('[GameEventsCasino] Stopping WebSocket');
+      for (const unwatch of unwatchRefs.current) {
+        unwatch();
       }
-      if (unwatchCardDealtRef.current) {
-        unwatchCardDealtRef.current();
-        unwatchCardDealtRef.current = null;
-      }
+      unwatchRefs.current = [];
       clientRef.current = null;
       setIsConnected(false);
     };

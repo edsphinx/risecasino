@@ -56,7 +56,7 @@ export function VyreJackChip() {
 
         // No allowance - try to auto-approve via session key
         const { getActiveSessionKey, signWithSessionKey } =
-          await import('@/services/sessionKeyManager');
+          await import('@/services/sessionKey.service');
         const sessionKey = getActiveSessionKey();
         if (!sessionKey) {
           logger.log('[VyreJackChip] No session key, showing approval modal');

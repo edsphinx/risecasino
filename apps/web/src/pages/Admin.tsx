@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { getProvider } from '@/lib/riseWallet';
-import { getActiveSessionKey } from '@/services/sessionKeyManager';
+import { getActiveSessionKey } from '@/services/sessionKey.service';
 import { logger } from '@/lib/logger';
 import { Footer } from '@/components/common/Footer';
 

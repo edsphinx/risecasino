@@ -13,7 +13,7 @@ import {
   parseAbiParameters,
   type Address,
 } from 'viem';
-import { signWithSessionKey, type SessionKeyData } from './sessionKeyManager';
+import { signWithSessionKey, type SessionKeyData } from './sessionKey.service';
 import { logger } from '@/lib/logger';
 
 // Permit2 contract address (same on all Rise chains)

@@ -1,5 +1,5 @@
 /**
- * useGameServiceCasino - Read-only game state hook for VyreJackCore
+ * useGameService - Read-only game state hook for VyreJackCore
  *
  * Single responsibility: read game state from VyreJackCore contract
  *
@@ -33,7 +33,7 @@ export interface UseGameServiceCasinoReturn {
  * Hook for reading VyreJackCore game state
  * NO POLLING - only fetches on demand
  */
-export function useGameServiceCasino(player: `0x${string}` | null): UseGameServiceCasinoReturn {
+export function useGameService(player: `0x${string}` | null): UseGameServiceCasinoReturn {
   const [game, setGame] = useState<VyreJackGame | null>(null);
   const [playerValue, setPlayerValue] = useState(0);
   const [dealerValue, setDealerValue] = useState(0);

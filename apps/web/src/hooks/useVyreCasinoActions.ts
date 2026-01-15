@@ -14,7 +14,7 @@ import {
   signWithSessionKey,
   ensureSessionKey,
   type SessionKeyData,
-} from '@/services/sessionKeyManager';
+} from '@/services/sessionKey.service';
 import { ErrorService, TokenService } from '@/services';
 import {
   VYRECASINO_ABI,

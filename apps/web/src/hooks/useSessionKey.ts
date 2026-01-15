@@ -12,7 +12,7 @@ import {
   isSessionKeyValid,
   clearAllSessionKeys,
   type SessionKeyData,
-} from '@/services/sessionKeyManager';
+} from '@/services/sessionKey.service';
 import { logger } from '@/lib/logger';
 import type { TimeRemaining } from '@vyrejack/shared';
 
