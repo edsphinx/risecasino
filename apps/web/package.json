@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@vyrejack/shared": "workspace:*",
-    "ox": "0.9.8",
+    "ox": "0.11.3",
     "preact": "^10.25.4",
     "rise-wallet": "0.2.29-1",
     "shreds": "^0.2.3",
