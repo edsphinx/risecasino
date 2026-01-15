@@ -45,6 +45,9 @@ interface GameState {
 
   // Whether game result overlay should be visible
   showingResult: boolean;
+
+  // V8: Last randomness source used (for debug/transparency)
+  lastRandomnessSource: { isVRF: boolean; source: string } | null;
 }
 
 interface GameActions {
@@ -65,6 +68,9 @@ interface GameActions {
 
   // Clear snapshot
   clearSnapshot: () => void;
+
+  // V8: Set randomness source
+  setRandomnessSource: (source: { isVRF: boolean; source: string } | null) => void;
 }
 
 type GameStore = GameState & GameActions;
@@ -82,6 +88,7 @@ const initialState: GameState = {
   },
   cardSnapshot: null,
   showingResult: false,
+  lastRandomnessSource: null,
 };
 
 // =============================================================================
@@ -140,6 +147,9 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
 
   clearSnapshot: () => set({ cardSnapshot: null }),
+
+  // V8: Set randomness source for debug/transparency
+  setRandomnessSource: (source) => set({ lastRandomnessSource: source }),
 }));
 
 // =============================================================================
@@ -149,3 +159,4 @@ export const useGameStore = create<GameStore>((set) => ({
 export const selectLastGameResult = (state: GameStore) => state.lastGameResult;
 export const selectShowingResult = (state: GameStore) => state.showingResult;
 export const selectAccumulatedCards = (state: GameStore) => state.accumulatedCards;
+export const selectRandomnessSource = (state: GameStore) => state.lastRandomnessSource;

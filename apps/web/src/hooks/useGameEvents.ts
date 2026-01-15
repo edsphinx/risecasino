@@ -44,6 +44,12 @@ export interface XPAwardedEvent {
   amount: bigint;
 }
 
+// V8: Randomness source tracking
+export interface RandomnessSourceEvent {
+  isVRF: boolean;
+  source: string; // 'VRF' or 'KeeperFallback' or 'AdminForce'
+}
+
 interface GameEventsCasinoCallbacks {
   onGameResolved: (event: GameResolvedEvent) => void;
   onCardDealt?: (event: CardDealtEvent) => void;
@@ -51,6 +57,8 @@ interface GameEventsCasinoCallbacks {
   onDealerBusted?: (event: BustedEvent) => void;
   onDealerCardRevealed?: (event: CardRevealedEvent) => void;
   onXPAwarded?: (event: XPAwardedEvent) => void;
+  // V8: Randomness source for debugging
+  onRandomnessSource?: (event: RandomnessSourceEvent) => void;
 }
 
 /**
@@ -299,8 +307,41 @@ export function useGameEvents(
       });
       unwatchRefs.current.push(unwatchXPAwarded);
 
+      // V8: Watch for RandomnessSourceUsed events (debug/transparency)
+      const unwatchRandomnessSource = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'RandomnessSourceUsed',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = log.args as {
+              player: `0x${string}`;
+              isVRF: boolean;
+              source: string;
+            };
+            logger.log('[GameEventsCasino] RandomnessSourceUsed:', {
+              isVRF: args.isVRF,
+              source: args.source,
+            });
+            if (callbacksRef.current.onRandomnessSource) {
+              callbacksRef.current.onRandomnessSource({
+                isVRF: args.isVRF,
+                source: args.source,
+              });
+            }
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] RandomnessSourceUsed error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchRandomnessSource);
+
       setIsConnected(true);
-      logger.log('[GameEventsCasino] WebSocket connected - listening to 6 event types');
+      logger.log('[GameEventsCasino] WebSocket connected - listening to 7 event types (V8)');
     } catch (error) {
       logger.error('[GameEventsCasino] Failed to start WebSocket:', error);
       setIsConnected(false);
