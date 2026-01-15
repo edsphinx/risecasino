@@ -24,8 +24,6 @@ export { useAssetBalances } from './useAssetBalances';
 
 // Utility hooks
 export { useFaucet } from './useFaucet';
-
-// Utility hooks
 export { useEventLogger } from './useEventLogger';
 export { useLiveWins } from './useLiveWins';
 export { useLeaderboardSubscription } from './useLeaderboardSubscription';

@@ -38,19 +38,21 @@ import type { VyreJackGame, GameResult } from '@vyrejack/shared';
 
 // VyreJackGameState enum values (from VyreJackCore.sol)
 // Must match contract exactly!
-const IDLE = 0;
-const WAITING_VRF = 1; // WaitingForDeal - game started, waiting for VRF
-const PLAYER_TURN = 2;
-const WAITING_HIT_VRF = 3; // WaitingForHit - hit requested, waiting for VRF
-const _DEALER_TURN = 3; // Not used in UI, but exists in contract
-// Final states
-const PLAYER_WIN = 4; // Fixed: was 5
-const DEALER_WIN = 5; // Fixed: was 6
-const PUSH = 6; // Fixed: was 7
-const PLAYER_BLACKJACK = 7; // Fixed: was 8
+const IDLE = 0; // No active game
+const WAITING_VRF = 1; // WaitingForDeal - awaiting initial 4 cards
+const PLAYER_TURN = 2; // Player can hit/stand/double
+const WAITING_HIT_VRF = 3; // WaitingForHit - awaiting hit card
+const WAITING_DOUBLE_VRF = 4; // WaitingForDouble - awaiting double card
+const DEALER_TURN = 5; // Dealer is drawing
+// Final states (game ended)
+const PLAYER_WIN = 6;
+const DEALER_WIN = 7;
+const PUSH = 8;
+const PLAYER_BLACKJACK = 9;
 
 // Suppress unused variable warnings
-void _DEALER_TURN;
+void WAITING_DOUBLE_VRF;
+void DEALER_TURN;
 
 // Card accumulator for smooth display
 interface CardAccumulator {
