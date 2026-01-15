@@ -121,6 +121,9 @@ model Game {
   pnl     String @db.VarChar(78) // Can be negative
   outcome String @db.VarChar(32) // 'win', 'lose', 'push', 'blackjack'
 
+  // V8: Randomness source tracking
+  randomnessSource String? @map("randomness_source") @db.VarChar(16) // 'vrf' or 'commit-reveal'
+
   // Game-specific data
   gameData Json? @map("game_data") // { playerHand: [2,11], dealerHand: [...] }
 

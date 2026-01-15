@@ -4,7 +4,7 @@
  * CHIPFaucet contract address and configuration.
  */
 
-import { CHIP_FAUCET_ABI } from './abi/CHIPFaucet';
+import { CHIP_FAUCET_ABI } from '@vyrejack/shared';
 import { riseTestnet, CHIP_TOKEN_ADDRESS, CHIP_FAUCET_ADDRESS } from './contract';
 
 export { CHIP_FAUCET_ABI };

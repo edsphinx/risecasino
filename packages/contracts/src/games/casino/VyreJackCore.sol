@@ -2,15 +2,17 @@
 pragma solidity ^0.8.28;
 
 /* --------------------------------------------------------------------------
- * VYREJACK V2 — BLACKJACK GAME FOR VYRECASINO
+ * VYREJACK V8 — BLACKJACK GAME FOR VYRECASINO
  * -------------------------------------------------------------------------
  * Pure game logic implementing IVyreGame for VyreCasino integration.
  *
  * - Core Flow: VyreCasino.play() → VyreJackCore.play() → VRF → GameResult
  * - Security: Only VyreCasino can initiate games via onlyCasino modifier
- * - Randomness: Uses Rise Chain VRF for provably fair card dealing
+ * - Randomness: Hybrid model with VRF primary + commit-reveal fallback
  * - Payouts: Handled entirely by VyreCasino via VyreTreasury (no house edge here)
  * - Card Model: Infinite deck to prevent on-chain card counting attacks
+ * - VRF Timeout: 15s timeout with automatic fallback to commit-reveal
+ * - Keeper: Dedicated keeper address can execute commit-reveal fallback
  * ------------------------------------------------------------------------*/
 
 import { IVyreGame } from "../../interfaces/IVyreGame.sol";
@@ -39,7 +41,8 @@ interface IVyreCasino {
  * @title  VyreJackCore
  * @author edsphinx
  * @custom:company Blocketh
- * @notice Provably fair Blackjack game for VyreCasino ecosystem.
+ * @custom:version 8.0.0
+ * @notice Provably fair Blackjack game for VyreCasino ecosystem with hybrid randomness.
  * @dev    This contract implements the IVyreGame interface for seamless integration
  *         with VyreCasino as the orchestrator. Game logic is pure - no treasury
  *         management, no house edge collection. All financial operations are
@@ -48,9 +51,16 @@ interface IVyreCasino {
  *         Security Model:
  *         - Infinite Deck: Each card is dealt from a fresh virtual deck (random % 52)
  *           to prevent card counting attacks common in on-chain casinos.
- *         - VRF Integration: All randomness is sourced from Rise Chain's VRF with
- *           async callback pattern for cryptographic security.
- *         - Access Control: Only VyreCasino can call play(), only VRF can callback.
+ *         - Hybrid Randomness: Primary VRF with 15s timeout, fallback to commit-reveal
+ *           for guaranteed game resolution.
+ *         - Keeper Role: Dedicated keeper can execute fallback when VRF times out.
+ *         - Access Control: Only VyreCasino can call play(), only VRF/keeper can resolve.
+ *
+ *         V8 Features:
+ *         - VRF timeout detection (15 seconds)
+ *         - Commit-reveal fallback mechanism
+ *         - Keeper role for automated fallback execution
+ *         - RandomnessSourceUsed event for audit trail
  */
 contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable {
     // ----------------------------------------------------------------------
@@ -129,6 +139,19 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     mapping(address => uint256) public playerNonces;
 
     // ----------------------------------------------------------------------
+    //  V8 STORAGE - Commit-Reveal Fallback for VRF Failures
+    // ----------------------------------------------------------------------
+
+    /// @notice Authorized keeper for fallback randomness (SAFE multisig or EOA)
+    address public keeper;
+
+    /// @notice VRF timeout threshold in seconds (after this, fallback is allowed)
+    uint256 public constant VRF_TIMEOUT = 15;
+
+    /// @notice Pending commit-reveal requests
+    mapping(address => CommitRevealRequest) public commitRequests;
+
+    // ----------------------------------------------------------------------
     //  STRUCTS
     // ----------------------------------------------------------------------
 
@@ -149,6 +172,14 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         address player; // Player who initiated
         RequestType requestType; // Type of random numbers needed
         bool fulfilled; // Whether callback received
+        uint256 timestamp; // When request was made (for timeout detection)
+    }
+
+    /// @notice Commit-reveal request for VRF fallback
+    struct CommitRevealRequest {
+        bytes32 commitment; // keccak256(secret)
+        uint256 blockNumber; // Block when commit was made
+        bool pending; // Whether awaiting reveal
     }
 
     // ----------------------------------------------------------------------
@@ -233,6 +264,22 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // ----------------------------------------------------------------------
+    //  V8 EVENTS - Commit-Reveal Fallback
+    // ----------------------------------------------------------------------
+
+    /// @notice Emitted when keeper address is changed
+    event KeeperChanged(address indexed oldKeeper, address indexed newKeeper);
+
+    /// @notice Emitted when VRF fallback commit is made
+    event FallbackCommit(address indexed player, bytes32 indexed commitment, uint256 blockNumber);
+
+    /// @notice Emitted when VRF fallback reveal is executed (randomness via commit-reveal, not VRF)
+    event FallbackReveal(address indexed player, uint256 randomness, string reason);
+
+    /// @notice Emitted when game uses fallback randomness (for clear auditing)
+    event RandomnessSourceUsed(address indexed player, bool isVRF, string source);
+
+    // ----------------------------------------------------------------------
     //  MODIFIERS
     // ----------------------------------------------------------------------
 
@@ -251,6 +298,12 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     /// @dev Restricts function to VRF Coordinator callback
     modifier onlyVRFCoordinator() {
         require(msg.sender == address(coordinator), "VyreJackCore: only VRF");
+        _;
+    }
+
+    /// @dev Restricts function to authorized keeper (for VRF fallback)
+    modifier onlyKeeper() {
+        require(msg.sender == keeper, "VyreJackCore: only keeper");
         _;
     }
 
@@ -337,8 +390,12 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 seed = uint256(keccak256(abi.encode(player, block.timestamp, nonce)));
         uint256 requestId = coordinator.requestRandomNumbers(4, seed);
 
-        vrfRequests[requestId] =
-            VRFRequest({ player: player, requestType: RequestType.InitialDeal, fulfilled: false });
+        vrfRequests[requestId] = VRFRequest({
+            player: player,
+            requestType: RequestType.InitialDeal,
+            fulfilled: false,
+            timestamp: block.timestamp
+        });
 
         emit GameStarted(player, bet.token, bet.amount);
 
@@ -406,7 +463,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 requestId = coordinator.requestRandomNumbers(1, seed);
 
         vrfRequests[requestId] = VRFRequest({
-            player: msg.sender, requestType: RequestType.PlayerHit, fulfilled: false
+            player: msg.sender,
+            requestType: RequestType.PlayerHit,
+            fulfilled: false,
+            timestamp: block.timestamp
         });
 
         emit VRFRequested(msg.sender, requestId, RequestType.PlayerHit);
@@ -438,7 +498,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 requestId = coordinator.requestRandomNumbers(1, seed);
 
         vrfRequests[requestId] = VRFRequest({
-            player: msg.sender, requestType: RequestType.PlayerDouble, fulfilled: false
+            player: msg.sender,
+            requestType: RequestType.PlayerDouble,
+            fulfilled: false,
+            timestamp: block.timestamp
         });
 
         emit VRFRequested(msg.sender, requestId, RequestType.PlayerDouble);
@@ -602,7 +665,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             uint256 requestId = coordinator.requestRandomNumbers(cardsNeeded, seed);
 
             vrfRequests[requestId] = VRFRequest({
-                player: player, requestType: RequestType.DealerDraw, fulfilled: false
+                player: player,
+                requestType: RequestType.DealerDraw,
+                fulfilled: false,
+                timestamp: block.timestamp
             });
         } else {
             _resolveGame(player);
@@ -624,7 +690,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             uint256 requestId = coordinator.requestRandomNumbers(1, seed);
 
             vrfRequests[requestId] = VRFRequest({
-                player: player, requestType: RequestType.DealerDraw, fulfilled: false
+                player: player,
+                requestType: RequestType.DealerDraw,
+                fulfilled: false,
+                timestamp: block.timestamp
             });
         } else {
             _resolveGame(player);
@@ -861,5 +930,120 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     {
         Game storage game = games[player];
         return (game.token, game.bet, game.playerCards, game.dealerCards, game.state);
+    }
+
+    // ==================== V8: COMMIT-REVEAL FALLBACK ====================
+
+    /**
+     * @notice Commit phase for VRF fallback when VRF times out
+     * @dev Can only be called by keeper when game is stuck in waiting state
+     * @param player Player address with stuck game
+     * @param commitment keccak256(secret) - keeper commits to a random value
+     */
+    function fallbackCommit(
+        address player,
+        bytes32 commitment
+    ) external onlyKeeper {
+        Game storage game = games[player];
+        GameState state = game.state;
+
+        // Only allow fallback for waiting states
+        require(
+            state == GameState.WaitingForDeal || state == GameState.WaitingForHit
+                || state == GameState.WaitingForDouble,
+            "VyreJackCore: game not waiting"
+        );
+
+        // Verify VRF has actually timed out (check game timestamp)
+        require(block.timestamp > game.timestamp + VRF_TIMEOUT, "VyreJackCore: VRF not timed out");
+
+        // Cannot commit if already pending
+        require(!commitRequests[player].pending, "VyreJackCore: commit pending");
+
+        commitRequests[player] = CommitRevealRequest({
+            commitment: commitment, blockNumber: block.number, pending: true
+        });
+
+        emit FallbackCommit(player, commitment, block.number);
+    }
+
+    /**
+     * @notice Reveal phase - reveals committed randomness and processes game
+     * @dev Must wait at least 1 block after commit for security
+     * @param player Player address
+     * @param secret The original secret that was committed
+     */
+    function fallbackReveal(
+        address player,
+        bytes32 secret
+    ) external onlyKeeper {
+        CommitRevealRequest storage req = commitRequests[player];
+
+        require(req.pending, "VyreJackCore: no pending commit");
+        require(
+            keccak256(abi.encodePacked(secret)) == req.commitment, "VyreJackCore: invalid reveal"
+        );
+        require(block.number > req.blockNumber, "VyreJackCore: wait one block");
+
+        // Generate randomness combining secret + blockhash (unpredictable by keeper)
+        uint256 randomness = uint256(
+            keccak256(abi.encodePacked(secret, blockhash(req.blockNumber), player, block.timestamp))
+        );
+
+        // Clear pending commit
+        req.pending = false;
+
+        emit FallbackReveal(player, randomness, "VRF timeout - commit-reveal fallback");
+        emit RandomnessSourceUsed(player, false, "commit-reveal");
+
+        // Process the game with this randomness
+        Game storage game = games[player];
+        GameState state = game.state;
+
+        if (state == GameState.WaitingForDeal) {
+            // Generate 4 cards for initial deal
+            uint256[] memory randomNumbers = new uint256[](4);
+            for (uint256 i = 0; i < 4; i++) {
+                randomNumbers[i] = uint256(keccak256(abi.encodePacked(randomness, i)));
+            }
+            _handleInitialDeal(player, randomNumbers);
+        } else if (state == GameState.WaitingForHit) {
+            // Generate 1 card for hit
+            uint256[] memory randomNumbers = new uint256[](1);
+            randomNumbers[0] = randomness;
+            _handlePlayerHit(player, randomNumbers);
+        } else if (state == GameState.WaitingForDouble) {
+            // Generate 1 card for double
+            uint256[] memory randomNumbers = new uint256[](1);
+            randomNumbers[0] = randomness;
+            _handlePlayerDouble(player, randomNumbers);
+        }
+    }
+
+    /**
+     * @notice Set the keeper address (owner only)
+     * @param newKeeper New keeper address (can be SAFE multisig or EOA)
+     */
+    function setKeeper(
+        address newKeeper
+    ) external onlyOwner {
+        address oldKeeper = keeper;
+        keeper = newKeeper;
+        emit KeeperChanged(oldKeeper, newKeeper);
+    }
+
+    /**
+     * @notice Get VRF request details
+     * @param requestId VRF request ID
+     */
+    function getVRFRequest(
+        uint256 requestId
+    )
+        external
+        view
+        returns (address player, RequestType requestType, bool fulfilled, uint256 timestamp)
+    {
+        VRFRequest storage req = vrfRequests[requestId];
+        return (req.player, req.requestType, req.fulfilled, req.timestamp);
     }
 }

@@ -11,11 +11,9 @@ import type { Address } from 'viem';
 import {
     VYRECASINO_ABI,
     VYREJACKCORE_ABI,
+    VYREJACK_ABI,
     ERC20_ABI,
 } from '@vyrejack/shared';
-
-// Legacy VyreJack ABI for ETH version (local - will migrate later)
-import { VYREJACK_ABI } from './abi/VyreJack';
 
 // Re-export ABIs
 export { VYREJACK_ABI, VYRECASINO_ABI, VYREJACKCORE_ABI, ERC20_ABI };

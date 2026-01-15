@@ -88,3 +88,4 @@ docker-compose.override.yml
 prisma/*.db
 prisma/*.db-journal
 
+ARCHITECTURE_PRINCIPLES.md

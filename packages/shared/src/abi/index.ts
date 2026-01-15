@@ -130,3 +130,7 @@ export type BlackjackABI = typeof BLACKJACK_ABI;
 export { VYRECASINO_ABI, type VyreCasinoABI } from './VyreCasino';
 export { VYREJACKCORE_ABI, type VyreJackCoreABI } from './VyreJackCore';
 export { ERC20_ABI, type ERC20ABI } from './ERC20';
+export { CHIP_FAUCET_ABI, type ChipFaucetABI } from './CHIPFaucet';
+
+// Legacy alias - use VYREJACKCORE_ABI for new code
+export { VYREJACKCORE_ABI as VYREJACK_ABI } from './VyreJackCore';
