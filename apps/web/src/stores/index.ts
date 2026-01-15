@@ -4,7 +4,21 @@
  * Central export for all Zustand stores.
  */
 
-export { useGameStore, selectLastGameResult, selectShowingResult, selectAccumulatedCards } from './gameStore';
-export type { GameResult, HandSnapshot, CardAccumulator } from './gameStore';
+export {
+  useGameStore,
+  selectLastGameResult,
+  selectShowingResult,
+  selectAccumulatedCards,
+} from './gameStore';
+export type { HandSnapshot, CardAccumulator } from './gameStore';
 
-export { useBalanceStore, selectBalance, selectAllowance, selectIsApproved, selectFormattedBalance } from './balanceStore';
+// Re-export GameResult from shared types (source of truth)
+export type { GameResult } from '@vyrejack/shared';
+
+export {
+  useBalanceStore,
+  selectBalance,
+  selectAllowance,
+  selectIsApproved,
+  selectFormattedBalance,
+} from './balanceStore';

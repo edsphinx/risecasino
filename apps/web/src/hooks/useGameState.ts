@@ -20,8 +20,14 @@
  * - Reusable for CHIP and USDC games
  */
 
-import { useState, useCallback, useRef, useMemo } from 'preact/hooks';
+import { useCallback, useRef, useMemo } from 'preact/hooks';
 import { useGameService } from './useGameService';
+import {
+  useGameStore,
+  selectLastGameResult,
+  selectAccumulatedCards,
+  selectShowingResult,
+} from '@/stores/gameStore';
 import { useGameEvents, type GameResolvedEvent, type CardDealtEvent } from './useGameEvents';
 import { logger } from '@/lib/logger';
 import type { VyreJackGame, GameResult } from '@vyrejack/shared';
@@ -146,15 +152,16 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   // Read-only game state (NO POLLING)
   const service = useGameService(player);
 
-  // Last game result snapshot
-  const [lastGameResult, setLastGameResult] = useState<HandSnapshot | null>(null);
-
-  // Card accumulator - tracks cards from CardDealt events
-  const [accumulatedCards, setAccumulatedCards] = useState<CardAccumulator>({
-    playerCards: [],
-    dealerCards: [],
-    dealerHiddenCard: null,
-  });
+  // ⚡ ZUSTAND: Use global store for persistent game results
+  const lastGameResult = useGameStore(selectLastGameResult);
+  const accumulatedCards = useGameStore(selectAccumulatedCards);
+  const showingResult = useGameStore(selectShowingResult);
+  const {
+    setLastGameResult,
+    clearLastResult: storeCllearResult,
+    addCard,
+    resetCards,
+  } = useGameStore();
 
   // Snapshot ref - backup of cards before action
   const cardSnapshotRef = useRef<CardAccumulator | null>(null);
@@ -188,20 +195,8 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     (event: CardDealtEvent) => {
       logger.log('[GameStateCasino] CardDealt:', event);
 
-      setAccumulatedCards((prev) => {
-        if (event.isDealer) {
-          // Dealer card
-          if (!event.faceUp && prev.dealerCards.length === 1) {
-            // This is the hidden second card - ONLY store reference, NOT in array
-            // The card will be added to array when game ends (like ETH version)
-            return { ...prev, dealerHiddenCard: event.card };
-          }
-          return { ...prev, dealerCards: [...prev.dealerCards, event.card] };
-        } else {
-          // Player card
-          return { ...prev, playerCards: [...prev.playerCards, event.card] };
-        }
-      });
+      // Use Zustand store's addCard
+      addCard(event.card, event.isDealer, event.faceUp);
 
       // DO NOT refetch here - it causes re-render loops!
       // Events are the source of truth for card accumulation
@@ -286,6 +281,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           payout: event.payout.toString(),
         });
 
+        // Use Zustand store
         setLastGameResult({
           result: event.result,
           payout: event.payout,
@@ -293,11 +289,11 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           dealerValue,
           playerCards,
           dealerCards,
-          bet: 0n, // Not in GameResolved event, use accumulated or estimate
+          bet: 0n,
         });
 
-        // Clear accumulated cards for next game
-        setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
+        // Clear accumulated cards for next game via store
+        resetCards();
         cardSnapshotRef.current = null;
 
         // Dispatch global event for wallet balance refresh
@@ -314,11 +310,9 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   );
 
   const clearLastResult = useCallback(() => {
-    setLastGameResult(null);
-    // Reset accumulated cards for new game
-    setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
+    storeCllearResult();
     cardSnapshotRef.current = null;
-  }, []);
+  }, [storeCllearResult]);
 
   // WebSocket listener for game events
   const { isConnected: isEventConnected } = useGameEvents(player, {
@@ -347,7 +341,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     return state === WAITING_VRF || state === WAITING_HIT_VRF;
   }, [service.game]);
 
-  const showingResult = lastGameResult !== null;
+  // showingResult already from store selector above
 
   return {
     // Game state

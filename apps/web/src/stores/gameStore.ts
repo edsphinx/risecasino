@@ -11,61 +11,60 @@
  */
 
 import { create } from 'zustand';
+import type { GameResult } from '@vyrejack/shared';
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-export type GameResult = 'win' | 'lose' | 'push' | 'blackjack';
-
 export interface HandSnapshot {
-    result: GameResult;
-    payout: bigint;
-    playerValue: number;
-    dealerValue: number;
-    playerCards: number[];
-    dealerCards: number[];
-    bet: bigint;
+  result: GameResult;
+  payout: bigint;
+  playerValue: number;
+  dealerValue: number;
+  playerCards: number[];
+  dealerCards: number[];
+  bet: bigint;
 }
 
 export interface CardAccumulator {
-    playerCards: number[];
-    dealerCards: number[];
-    dealerHiddenCard: number | null;
+  playerCards: number[];
+  dealerCards: number[];
+  dealerHiddenCard: number | null;
 }
 
 interface GameState {
-    // Last game result - persists after game ends for overlay display
-    lastGameResult: HandSnapshot | null;
+  // Last game result - persists after game ends for overlay display
+  lastGameResult: HandSnapshot | null;
 
-    // Accumulated cards from WebSocket CardDealt events
-    accumulatedCards: CardAccumulator;
+  // Accumulated cards from WebSocket CardDealt events
+  accumulatedCards: CardAccumulator;
 
-    // Card snapshot taken just before an action
-    cardSnapshot: CardAccumulator | null;
+  // Card snapshot taken just before an action
+  cardSnapshot: CardAccumulator | null;
 
-    // Whether game result overlay should be visible
-    showingResult: boolean;
+  // Whether game result overlay should be visible
+  showingResult: boolean;
 }
 
 interface GameActions {
-    // Set the game result (called when GamePlayed event received)
-    setLastGameResult: (result: HandSnapshot | null) => void;
+  // Set the game result (called when GamePlayed event received)
+  setLastGameResult: (result: HandSnapshot | null) => void;
 
-    // Clear result and reset for new game
-    clearLastResult: () => void;
+  // Clear result and reset for new game
+  clearLastResult: () => void;
 
-    // Update accumulated cards from CardDealt events
-    addCard: (card: number, isDealer: boolean, faceUp: boolean) => void;
+  // Update accumulated cards from CardDealt events
+  addCard: (card: number, isDealer: boolean, faceUp: boolean) => void;
 
-    // Clear accumulated cards for new game
-    resetCards: () => void;
+  // Clear accumulated cards for new game
+  resetCards: () => void;
 
-    // Take snapshot of current cards before action
-    snapshotCards: () => void;
+  // Take snapshot of current cards before action
+  snapshotCards: () => void;
 
-    // Clear snapshot
-    clearSnapshot: () => void;
+  // Clear snapshot
+  clearSnapshot: () => void;
 }
 
 type GameStore = GameState & GameActions;
@@ -75,14 +74,14 @@ type GameStore = GameState & GameActions;
 // =============================================================================
 
 const initialState: GameState = {
-    lastGameResult: null,
-    accumulatedCards: {
-        playerCards: [],
-        dealerCards: [],
-        dealerHiddenCard: null,
-    },
-    cardSnapshot: null,
-    showingResult: false,
+  lastGameResult: null,
+  accumulatedCards: {
+    playerCards: [],
+    dealerCards: [],
+    dealerHiddenCard: null,
+  },
+  cardSnapshot: null,
+  showingResult: false,
 };
 
 // =============================================================================
@@ -90,58 +89,57 @@ const initialState: GameState = {
 // =============================================================================
 
 export const useGameStore = create<GameStore>((set) => ({
-    ...initialState,
+  ...initialState,
 
-    setLastGameResult: (result) =>
-        set({
-            lastGameResult: result,
-            showingResult: result !== null,
-        }),
+  setLastGameResult: (result) =>
+    set({
+      lastGameResult: result,
+      showingResult: result !== null,
+    }),
 
-    clearLastResult: () =>
-        set({
-            lastGameResult: null,
-            showingResult: false,
-            accumulatedCards: initialState.accumulatedCards,
-            cardSnapshot: null,
-        }),
+  clearLastResult: () =>
+    set({
+      lastGameResult: null,
+      showingResult: false,
+      accumulatedCards: initialState.accumulatedCards,
+      cardSnapshot: null,
+    }),
 
-    addCard: (card, isDealer, faceUp) =>
-        set((state) => {
-            const newAccumulated = { ...state.accumulatedCards };
+  addCard: (card, isDealer, faceUp) =>
+    set((state) => {
+      const newAccumulated = { ...state.accumulatedCards };
 
-            if (isDealer) {
-                if (!faceUp && newAccumulated.dealerHiddenCard === null) {
-                    // Hidden card (face down)
-                    newAccumulated.dealerHiddenCard = card;
-                }
-                // Always add to dealer cards array
-                if (!newAccumulated.dealerCards.includes(card)) {
-                    newAccumulated.dealerCards = [...newAccumulated.dealerCards, card];
-                }
-            } else {
-                // Player card
-                if (!newAccumulated.playerCards.includes(card)) {
-                    newAccumulated.playerCards = [...newAccumulated.playerCards, card];
-                }
-            }
+      if (isDealer) {
+        if (!faceUp && newAccumulated.dealerHiddenCard === null) {
+          // Hidden card (face down)
+          newAccumulated.dealerHiddenCard = card;
+        }
+        // Always add to dealer cards array
+        if (!newAccumulated.dealerCards.includes(card)) {
+          newAccumulated.dealerCards = [...newAccumulated.dealerCards, card];
+        }
+      } else {
+        // Player card
+        if (!newAccumulated.playerCards.includes(card)) {
+          newAccumulated.playerCards = [...newAccumulated.playerCards, card];
+        }
+      }
 
-            return { accumulatedCards: newAccumulated };
-        }),
+      return { accumulatedCards: newAccumulated };
+    }),
 
-    resetCards: () =>
-        set({
-            accumulatedCards: initialState.accumulatedCards,
-            cardSnapshot: null,
-        }),
+  resetCards: () =>
+    set({
+      accumulatedCards: initialState.accumulatedCards,
+      cardSnapshot: null,
+    }),
 
-    snapshotCards: () =>
-        set((state) => ({
-            cardSnapshot: { ...state.accumulatedCards },
-        })),
+  snapshotCards: () =>
+    set((state) => ({
+      cardSnapshot: { ...state.accumulatedCards },
+    })),
 
-    clearSnapshot: () =>
-        set({ cardSnapshot: null }),
+  clearSnapshot: () => set({ cardSnapshot: null }),
 }));
 
 // =============================================================================
