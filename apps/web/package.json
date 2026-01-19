@@ -15,7 +15,7 @@
     "@vyrejack/shared": "workspace:*",
     "ox": "0.9.8",
     "preact": "^10.25.4",
-    "rise-wallet": "0.2.29-1",
+    "rise-wallet": "0.3.0",
     "shreds": "^0.2.3",
     "viem": "^2.21.54",
     "wouter-preact": "^3.9.0"
