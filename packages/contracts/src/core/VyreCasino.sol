@@ -120,6 +120,19 @@ contract VyreCasino is ReentrancyGuard {
     /// @notice XP per bet unit (e.g., 1 XP per CHIP bet)
     uint256 public xpPerBet = 1;
 
+    // ----------------------------------------------------------------------
+    //  CIRCUIT BREAKER (Daily Payout Limit)
+    // ----------------------------------------------------------------------
+
+    /// @notice Daily payout limit per token (0 = no limit)
+    mapping(address => uint256) public dailyPayoutLimit;
+
+    /// @notice Accumulated payouts per token per day
+    mapping(address => mapping(uint256 => uint256)) public dailyPayouts;
+
+    /// @notice Whether circuit breaker is active
+    bool public circuitBreakerEnabled = true;
+
     // ==================== CHIP TIERS ====================
 
     /// @notice Visual chip tiers for frontend
@@ -164,6 +177,9 @@ contract VyreCasino is ReentrancyGuard {
     event ReferralShareUpdated(uint256 oldBps, uint256 newBps);
     event XPRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
     event BuybackWalletUpdated(address indexed oldWallet, address indexed newWallet);
+    event CircuitBreakerTriggered(address indexed token, uint256 dailyTotal, uint256 limit);
+    event DailyPayoutLimitUpdated(address indexed token, uint256 oldLimit, uint256 newLimit);
+    event CircuitBreakerToggled(bool enabled);
 
     /// @notice Emitted when async settlement is pending (for frontend tracking)
     event SettlementPending(
@@ -426,6 +442,51 @@ contract VyreCasino is ReentrancyGuard {
         emit BuybackWalletUpdated(oldWallet, _wallet);
     }
 
+    // ==================== CIRCUIT BREAKER ADMIN ====================
+
+    /// @notice Set daily payout limit for a token (owner only)
+    /// @param token Token address
+    /// @param limit Daily limit in token units (0 = no limit)
+    function setDailyPayoutLimit(
+        address token,
+        uint256 limit
+    ) external onlyOwner {
+        uint256 oldLimit = dailyPayoutLimit[token];
+        dailyPayoutLimit[token] = limit;
+        emit DailyPayoutLimitUpdated(token, oldLimit, limit);
+    }
+
+    /// @notice Enable or disable circuit breaker (owner only)
+    function setCircuitBreakerEnabled(
+        bool enabled
+    ) external onlyOwner {
+        circuitBreakerEnabled = enabled;
+        emit CircuitBreakerToggled(enabled);
+    }
+
+    /// @notice View today's total payouts for a token
+    function getTodayPayouts(
+        address token
+    ) external view returns (uint256) {
+        uint256 today = block.timestamp / 1 days;
+        return dailyPayouts[token][today];
+    }
+
+    /// @notice View remaining payout capacity for today
+    function getRemainingPayoutCapacity(
+        address token
+    ) external view returns (uint256) {
+        uint256 limit = dailyPayoutLimit[token];
+        if (limit == 0) return type(uint256).max; // No limit
+
+        uint256 today = block.timestamp / 1 days;
+        uint256 used = dailyPayouts[token][today];
+
+        // Safe: if limit was lowered after payouts, return 0 instead of underflowing
+        if (used >= limit) return 0;
+        return limit - used;
+    }
+
     // ==================== GAME SETTLEMENT ====================
 
     /**
@@ -557,10 +618,32 @@ contract VyreCasino is ReentrancyGuard {
             // Treasury keeps remaining (already in treasury)
         }
 
-        // Pay player
+        // Pay player (with Circuit Breaker check)
         if (netPayout > 0) {
+            _checkCircuitBreaker(token, netPayout);
             treasury.payout(player, token, netPayout);
         }
+    }
+
+    /// @notice Circuit breaker check - enforces daily payout limits
+    function _checkCircuitBreaker(
+        address token,
+        uint256 amount
+    ) internal {
+        if (!circuitBreakerEnabled) return;
+
+        uint256 limit = dailyPayoutLimit[token];
+        if (limit == 0) return; // No limit set for this token
+
+        uint256 today = block.timestamp / 1 days;
+        uint256 newTotal = dailyPayouts[token][today] + amount;
+
+        if (newTotal > limit) {
+            emit CircuitBreakerTriggered(token, newTotal, limit);
+            revert("VyreCasino: daily payout limit exceeded");
+        }
+
+        dailyPayouts[token][today] = newTotal;
     }
 
     function _calculateHouseEdge(
