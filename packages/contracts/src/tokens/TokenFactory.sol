@@ -15,6 +15,9 @@ pragma solidity ^0.8.28;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IXPRegistry } from "../interfaces/IXPRegistry.sol";
+import { IUniswapV2Factory } from "../interfaces/IUniswapV2Factory.sol";
+import { IUniswapV2Router02 } from "../interfaces/IUniswapV2Router02.sol";
 
 /**
  * @title  MemeToken
@@ -37,43 +40,6 @@ contract MemeToken is ERC20 {
         createdAt = block.timestamp;
         _mint(_creator, initialSupply);
     }
-}
-
-// ----------------------------------------------------------------------
-//  EXTERNAL INTERFACES
-// ----------------------------------------------------------------------
-
-interface IXPRegistry {
-    function isCasinoOwner(
-        address user
-    ) external view returns (bool);
-    function getLevel(
-        address user
-    ) external view returns (uint8);
-}
-
-interface IUniswapV2Factory {
-    function createPair(
-        address tokenA,
-        address tokenB
-    ) external returns (address pair);
-    function getPair(
-        address tokenA,
-        address tokenB
-    ) external view returns (address pair);
-}
-
-interface IUniswapV2Router02 {
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 amountADesired,
-        uint256 amountBDesired,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
 }
 
 /**

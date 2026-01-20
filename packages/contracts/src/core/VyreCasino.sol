@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /* --------------------------------------------------------------------------
- * VYRECASINO — CENTRAL ORCHESTRATOR FOR ALL CASINO GAMES
+ * VYRECASINO — CENTRAL ORCHESTRATOR FOR ALL CASINO GAMES V4
  * -------------------------------------------------------------------------
  * Routes player bets through registered games and handles all financial logic.
  *
@@ -12,6 +12,10 @@ pragma solidity ^0.8.28;
  * - XP Integration: Awards XP based on bet amounts for level progression
  * - Token Whitelist: Only approved ERC20 tokens can be used for betting
  * - Security: ReentrancyGuard, pausable, only owner can configure
+ *
+ * @author edsphinx
+ * @custom:company Blocketh
+ * @custom:version 4.0.0
  * ------------------------------------------------------------------------*/
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -19,54 +23,15 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { IVyreGame } from "../interfaces/IVyreGame.sol";
 import { IPermit2 } from "../interfaces/IPermit2.sol";
-
-// ----------------------------------------------------------------------
-//  EXTERNAL INTERFACES
-// ----------------------------------------------------------------------
-
-/// @notice Interface for VyreTreasury vault
-interface IVyreTreasury {
-    function payout(
-        address to,
-        address token,
-        uint256 amount
-    ) external;
-    function balance(
-        address token
-    ) external view returns (uint256);
-}
-
-/// @notice Interface for XP level tracking
-interface IXPRegistry {
-    function addXP(
-        address user,
-        uint256 amount
-    ) external;
-    function getLevel(
-        address user
-    ) external view returns (uint8);
-    function getHouseEdgeReduction(
-        address user
-    ) external view returns (uint256);
-}
-
-/// @notice Interface for multi-tier referral system
-interface IReferralRegistry {
-    function recordEarnings(
-        address player,
-        address token,
-        uint256 houseEdgeAmount,
-        uint256 betAmount
-    ) external;
-    function setReferrer(
-        address referrer
-    ) external;
-}
+import { IVyreTreasury } from "../interfaces/IVyreTreasury.sol";
+import { IXPRegistry } from "../interfaces/IXPRegistry.sol";
+import { IReferralRegistry } from "../interfaces/IReferralRegistry.sol";
 
 /**
  * @title  VyreCasino
  * @author edsphinx
  * @custom:company Blocketh
+ * @custom:version 4.0.0
  * @notice Central orchestrator for the Vyre Casino ecosystem.
  * @dev    This contract acts as the single entry point for all casino gameplay.
  *         Players interact with VyreCasino.play() which routes to registered games.

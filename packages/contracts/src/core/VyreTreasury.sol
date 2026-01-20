@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /* --------------------------------------------------------------------------
- * VYRETREASURY — SECURE VAULT FOR CASINO FUNDS
+ * VYRETREASURY — SECURE VAULT FOR CASINO FUNDS V4
  * -------------------------------------------------------------------------
  * Holds all betting tokens and manages payouts with multiple security layers.
  *
@@ -11,6 +11,10 @@ pragma solidity ^0.8.28;
  * - Emergency Freeze: Instant halt of all operations
  * - Timelocked Withdrawals: 72-hour delay for emergency admin withdrawals
  * - Reentrancy Protection: All payout functions are guarded
+ *
+ * @author edsphinx
+ * @custom:company Blocketh
+ * @custom:version 4.0.0
  * ------------------------------------------------------------------------*/
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -21,6 +25,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
  * @title  VyreTreasury
  * @author edsphinx
  * @custom:company Blocketh
+ * @custom:version 4.0.0
  * @notice Secure vault holding all casino funds with multi-layer security.
  * @dev    This contract is designed to be controlled by a SAFE multisig as owner
  *         and VyreCasino as the operator. The operator can only request payouts

@@ -17,15 +17,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-interface IXPRegistry {
-    function canCreateVault(
-        address user
-    ) external view returns (bool);
-    function getLevel(
-        address user
-    ) external view returns (uint8);
-}
+import { IXPRegistry } from "../interfaces/IXPRegistry.sol";
 
 /**
  * @title  TableVault

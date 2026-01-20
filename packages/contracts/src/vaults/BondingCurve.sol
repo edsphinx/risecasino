@@ -16,40 +16,10 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-interface IUniswapV2Factory {
-    function createPair(
-        address tokenA,
-        address tokenB
-    ) external returns (address pair);
-}
-
-interface IUniswapV2Router02 {
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 amountADesired,
-        uint256 amountBDesired,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
-}
-
-interface ILPVesting {
-    function lockLP(
-        address pair,
-        uint256 amount,
-        address beneficiary
-    ) external;
-}
-
-interface IXPRegistry {
-    function isCasinoOwner(
-        address user
-    ) external view returns (bool);
-}
+import { IUniswapV2Factory } from "../interfaces/IUniswapV2Factory.sol";
+import { IUniswapV2Router02 } from "../interfaces/IUniswapV2Router02.sol";
+import { ILPVesting } from "../interfaces/ILPVesting.sol";
+import { IXPRegistry } from "../interfaces/IXPRegistry.sol";
 
 /**
  * @title  BondingCurveToken

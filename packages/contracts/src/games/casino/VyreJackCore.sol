@@ -18,24 +18,12 @@ pragma solidity ^0.8.28;
 import { IVyreGame } from "../../interfaces/IVyreGame.sol";
 import { IVRFConsumer } from "../../interfaces/IVRFConsumer.sol";
 import { IVRFCoordinator } from "../../interfaces/IVRFCoordinator.sol";
+import { IVyreCasino } from "../../interfaces/IVyreCasino.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {
     UUPSUpgradeable
 } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
-/// @notice Interface for VyreCasino to settle async game payouts
-interface IVyreCasino {
-    /// @notice Settle payout for async game (applies house fee)
-    /// @param player Player to receive payout
-    /// @param token Token to pay
-    /// @param amount Gross payout amount (before house edge)
-    function settlePayout(
-        address player,
-        address token,
-        uint256 amount
-    ) external;
-}
 
 /**
  * @title  VyreJackCore

@@ -15,15 +15,7 @@ pragma solidity ^0.8.28;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-/// @notice Interface for VyreTreasury payouts
-interface IVyreTreasury {
-    function payout(
-        address to,
-        address token,
-        uint256 amount
-    ) external;
-}
+import { IVyreTreasury } from "../interfaces/IVyreTreasury.sol";
 
 /**
  * @title  ReferralRegistry
