@@ -22,3 +22,14 @@ export {
   selectIsApproved,
   selectFormattedBalance,
 } from './balanceStore';
+
+export {
+  useSessionStore,
+  selectSessionKey,
+  selectHasSessionKey,
+  selectHasHydrated,
+  selectIsCreating,
+  selectSessionError,
+  revokeOrphanedRemoteKeys,
+} from './sessionStore';
+export type { SessionKeyData } from './sessionStore';
