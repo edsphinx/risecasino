@@ -29,9 +29,6 @@ import {
   useGameStore,
   selectFlippedPlayerIndices,
   selectFlippedDealerIndices,
-  // 🎯 SSOT selectors
-  selectDisplayPlayerCards,
-  selectDisplayDealerCards,
 } from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
@@ -101,9 +98,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const flippedDealerIndices = useGameStore(selectFlippedDealerIndices);
   const { resetAnimationState, clearGameCards } = useGameStore();
 
-  // 🎯 SSOT: Direct card display from single source of truth
-  const ssotPlayerCards = useGameStore(selectDisplayPlayerCards);
-  const ssotDealerCards = useGameStore(selectDisplayDealerCards);
+  // 🎯 SSOT: Get raw state for card display
+  // Using primitive/stable selectors to prevent infinite re-renders
+  const gameCards = useGameStore((s) => s.gameCards);
+  const revealedCount = useGameStore((s) => s.revealedCount);
+  const isHiddenCardFlipped = useGameStore((s) => s.isHiddenCardFlipped);
 
   // ⚡ Token balance hook - cached reads with polling
   const {
@@ -221,25 +220,35 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   }, [clearLastResult, resetAnimationState, clearGameCards, refreshBalance, refetchGame]);
 
   // Determine which cards/values to display
-  // 🎯 SSOT: Simple logic - use SSOT selectors as primary source
+  // 🎯 SSOT: Compute display cards from raw state (avoids infinite re-renders from .slice())
   const displayPlayerCards = useMemo(() => {
     // Result phase: use snapshot
     if (showingResult && lastGameResult) {
       return lastGameResult.playerCards;
     }
-    // Active game: use SSOT derived selector (gameCards sliced by revealedCount)
-    return ssotPlayerCards;
-  }, [showingResult, lastGameResult, ssotPlayerCards]);
+    // Active game: slice gameCards by revealedCount
+    return gameCards.playerCards.slice(0, revealedCount.player);
+  }, [showingResult, lastGameResult, gameCards.playerCards, revealedCount.player]);
 
-  // 🎯 SSOT: Dealer cards with hidden card logic built into selector
+  // 🎯 SSOT: Dealer cards with hidden card logic
   const displayDealerCards = useMemo(() => {
     // Result phase: use snapshot (all cards visible)
     if (showingResult && lastGameResult) {
       return lastGameResult.dealerCards;
     }
-    // Active game: use SSOT derived selector (handles hidden card automatically)
-    return ssotDealerCards;
-  }, [showingResult, lastGameResult, ssotDealerCards]);
+    // Active game: slice and apply hidden card logic
+    const cards = gameCards.dealerCards.slice(0, revealedCount.dealer);
+    if (cards.length >= 2 && !isHiddenCardFlipped) {
+      return [cards[0], -1, ...cards.slice(2)];
+    }
+    return cards;
+  }, [
+    showingResult,
+    lastGameResult,
+    gameCards.dealerCards,
+    revealedCount.dealer,
+    isHiddenCardFlipped,
+  ]);
 
   const displayPlayerValue =
     showingResult && lastGameResult ? lastGameResult.playerValue : playerValue;
@@ -410,7 +419,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         result={displayResult === 'lose' ? 'win' : null}
                         hideValue
                         flippedIndices={
-                          ssotDealerCards.length > 0
+                          displayDealerCards.length > 0
                             ? flippedDealerIndices // ⚡ Use Zustand animation state
                             : dealPhase === 'dealing' || dealPhase === 'revealing'
                               ? flippedCards.dealer
@@ -443,7 +452,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         result={displayResult}
                         hideValue
                         flippedIndices={
-                          ssotPlayerCards.length > 0
+                          displayPlayerCards.length > 0
                             ? flippedPlayerIndices // ⚡ Use Zustand animation state
                             : dealPhase === 'dealing' || dealPhase === 'revealing'
                               ? flippedCards.player
