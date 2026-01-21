@@ -133,7 +133,7 @@ export const useSessionStore = create<SessionStore>()(
         );
       },
 
-      createSessionKey: async (walletAddress, tokenContext = 'ALL') => {
+      createSessionKey: async (walletAddress, tokenContext = 'USDC') => {
         if (!walletAddress) {
           set({ error: 'Wallet address required' });
           return null;
