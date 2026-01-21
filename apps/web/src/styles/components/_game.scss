@@ -1857,12 +1857,12 @@
   border-radius: 100px 100px 0 0;
 }
 
-/* Play zones */
+/* Play zones - main card play areas with yellow border */
 .play-zone {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 280px;
+  width: 400px; /* Increased from 280px for more card space on desktop */
   height: 150px;
   padding: 12px 18px;
   border: 3px solid rgba(255, 215, 0, 0.5);

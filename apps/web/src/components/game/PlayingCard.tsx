@@ -2,22 +2,22 @@
  * PlayingCard Component
  *
  * Displays a playing card with flip animation.
- * ⚡ ANIMATIONS: Powered by GSAP for smooth card dealing and flipping
+ * ⚡ ANIMATIONS: 100% GSAP - no CSS transitions
+ *
+ * ⚠️ SECURITY: Hidden cards never show front image.
+ * useLayoutEffect + GSAP ensures no flash before paint.
  */
 
 import type { PlayingCardProps } from '@vyrejack/shared';
-import { useRef, useEffect } from 'preact/hooks';
+import { useRef, useEffect, useState, useLayoutEffect } from 'preact/hooks';
+import gsap from 'gsap';
 import { getCardDisplay, getCardImageUrl, getCardBackUrl } from '@/lib/cards';
-import { animateCardDeal, animateCardFlip } from '@/lib/animations';
+import { animateCardDeal } from '@/lib/animations';
 
 interface EnhancedPlayingCardProps extends PlayingCardProps {
-  /** Card is dealing from deck - starts off-screen */
   isDealing?: boolean;
-  /** Index in deal sequence for stagger timing */
   dealIndex?: number;
-  /** Whether this is a dealer card (affects animation direction) */
   isDealer?: boolean;
-  /** Callback when deal animation completes */
   onDealComplete?: () => void;
 }
 
@@ -36,27 +36,36 @@ export function PlayingCard({
   const cardBackUrl = getCardBackUrl();
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const cardInnerRef = useRef<HTMLDivElement>(null);
   const hasAnimatedRef = useRef(false);
   const wasFlippedRef = useRef(!faceUp);
 
-  // Update ref when faceUp changes - if it was face-down before, mark as was-flipped
+  // ⚠️ SECURITY: Front image only rendered when face-up
+  const [showFront, setShowFront] = useState(faceUp);
+
+  // ⚡ GSAP: Set initial state BEFORE paint using useLayoutEffect
+  useLayoutEffect(() => {
+    if (cardInnerRef.current && !faceUp) {
+      // Card starts face-down: rotate 180deg immediately
+      gsap.set(cardInnerRef.current, { rotateY: 180 });
+    }
+  }, []);
+
+  // Track when card was previously flipped
   useEffect(() => {
     if (!faceUp) {
       wasFlippedRef.current = true;
     }
   }, [faceUp]);
 
-  // ⚡ GSAP: Deal animation on mount
+  // ⚡ GSAP: Deal animation
   useEffect(() => {
     if ((isNew || isDealing) && cardRef.current && !hasAnimatedRef.current) {
       hasAnimatedRef.current = true;
 
-      // Small delay to ensure DOM is ready
       const timeout = setTimeout(() => {
         if (cardRef.current) {
           const tween = animateCardDeal(cardRef.current, dealIndex, isDealer);
-
-          // Call onDealComplete when animation finishes
           if (onDealComplete) {
             tween.eventCallback('onComplete', onDealComplete);
           }
@@ -67,38 +76,49 @@ export function PlayingCard({
     }
   }, [isNew, isDealing, dealIndex, isDealer, delay, onDealComplete]);
 
-  // ⚡ GSAP: Flip animation when card is revealed
+  // ⚡ GSAP: Flip animation when revealed
   useEffect(() => {
-    if (wasFlippedRef.current && faceUp && cardRef.current) {
-      const cardInner = cardRef.current.querySelector('.card-inner');
-      if (cardInner) {
-        animateCardFlip(cardInner);
-      }
+    if (wasFlippedRef.current && faceUp && cardInnerRef.current) {
+      const tl = gsap.timeline();
+
+      // First half: rotate 180 -> 90
+      tl.to(cardInnerRef.current, {
+        rotateY: 90,
+        duration: 0.2,
+        ease: 'power1.in',
+      });
+
+      // Midpoint: add front image
+      tl.call(() => setShowFront(true));
+
+      // Second half: rotate 90 -> 0
+      tl.to(cardInnerRef.current, {
+        rotateY: 0,
+        duration: 0.2,
+        ease: 'power1.out',
+      });
     }
   }, [faceUp]);
 
-  // Build class string
-  const innerClasses = `card-inner ${!faceUp ? 'flipped' : ''} ${wasFlippedRef.current && faceUp ? 'was-flipped' : ''}`;
-
   return (
-    <div
-      ref={cardRef}
-      className="playing-card"
-      style={{ opacity: isNew || isDealing ? 0 : 1 }}
-    >
-      <div className={innerClasses}>
-        {/* Card Front - PNG Image */}
+    <div ref={cardRef} className="playing-card" style={{ opacity: isNew || isDealing ? 0 : 1 }}>
+      {/* ⚡ GSAP will animate from here, but inline style guarantees initial state */}
+      <div
+        ref={cardInnerRef}
+        className="card-inner"
+        style={{ transform: showFront ? 'rotateY(0deg)' : 'rotateY(180deg)' }}
+      >
         <div className="card-front">
-          <img
-            src={cardImageUrl}
-            alt={`${rank} of ${suit}`}
-            className="card-image"
-            loading="lazy"
-            draggable={false}
-          />
+          {showFront && (
+            <img
+              src={cardImageUrl}
+              alt={`${rank} of ${suit}`}
+              className="card-image"
+              loading="eager"
+              draggable={false}
+            />
+          )}
         </div>
-
-        {/* Card Back - PNG Image */}
         <div className="card-back">
           <img
             src={cardBackUrl}
