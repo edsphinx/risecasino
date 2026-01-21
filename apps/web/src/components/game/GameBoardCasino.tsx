@@ -18,12 +18,21 @@
  * - ShareVictory button
  */
 
-import { useState, useMemo, useCallback, useRef } from 'preact/hooks';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { useVyreCasinoActions } from '@/hooks/useVyreCasinoActions';
 import { useTokenBalance } from '@/hooks/useTokenBalance';
 import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
+import { useAnimationProcessor } from '@/hooks/useAnimationProcessor';
+import {
+  useGameStore,
+  selectFlippedPlayerIndices,
+  selectFlippedDealerIndices,
+  // 🎯 SSOT selectors
+  selectDisplayPlayerCards,
+  selectDisplayDealerCards,
+} from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
 import { ActionButtons } from './ActionButtons';
@@ -37,6 +46,8 @@ import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
+// 🧪 TEST: Animation system test panel (DELETE AFTER TESTING)
+import { AnimationSystemTest } from './AnimationSystemTest';
 
 interface GameBoardCasinoProps {
   token: `0x${string}`;
@@ -54,12 +65,45 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const [betAmount, setBetAmount] = useState('10');
   const [xpPopup, setXpPopup] = useState<XPPopupState | null>(null);
 
+  // ⚡ DEAL PHASE: Controls sequential card dealing and flip animations
+  // idle → dealing → waiting_vrf → revealing → player_turn → dealer_turn → result
+  type DealPhase =
+    | 'idle'
+    | 'dealing'
+    | 'waiting_vrf'
+    | 'revealing'
+    | 'player_turn'
+    | 'dealer_turn'
+    | 'result';
+  const [dealPhase, setDealPhase] = useState<DealPhase>('idle');
+
+  // Track which cards have been flipped (for sequential reveal)
+  const [flippedCards, setFlippedCards] = useState<{ player: number[]; dealer: number[] }>({
+    player: [],
+    dealer: [],
+  });
+
+  // ⚡ DEALER TURN: Control when to show result overlay (after dealer animation completes)
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+
   // Derive context if not provided
   const context =
     tokenContext || (tokenSymbol === 'USDC' ? 'USDC' : tokenSymbol === 'CHIP' ? 'CHIP' : 'ETH');
 
   const wallet = useWallet();
   const isActiveTab = useTabFocus();
+
+  // ⚡ Animation processor - runs queue processing (hook called for side effects)
+  useAnimationProcessor();
+
+  // ⚡ Zustand animation state - flipped indices still used in Hand component
+  const flippedPlayerIndices = useGameStore(selectFlippedPlayerIndices);
+  const flippedDealerIndices = useGameStore(selectFlippedDealerIndices);
+  const { resetAnimationState, clearGameCards } = useGameStore();
+
+  // 🎯 SSOT: Direct card display from single source of truth
+  const ssotPlayerCards = useGameStore(selectDisplayPlayerCards);
+  const ssotDealerCards = useGameStore(selectDisplayDealerCards);
 
   // ⚡ Token balance hook - cached reads with polling
   const {
@@ -72,7 +116,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const {
     game,
     playerValue,
-    dealerValue,
     isPlayerTurn,
     hasActiveGame,
     showingResult,
@@ -80,7 +123,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     clearLastResult,
     refetch: refetchGame,
     snapshotCards,
-    accumulatedCards,
   } = useGameState(wallet.address as `0x${string}` | null);
 
   // XP popup when game ends
@@ -144,8 +186,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   // Wrapped actions that take snapshot before executing
   const handlePlaceBet = useCallback(() => {
     clearLastResult();
+    resetAnimationState(); // ⚡ Clear animation queue for new game
+    setDealPhase('dealing');
+    setFlippedCards({ player: [], dealer: [] });
     actions.placeBet(betAmount, token);
-  }, [actions, betAmount, token, clearLastResult]);
+  }, [actions, betAmount, token, clearLastResult, resetAnimationState]);
 
   const handleHit = useCallback(() => {
     snapshotCards();
@@ -169,40 +214,141 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
 
   const handleNewGame = useCallback(() => {
     clearLastResult();
+    resetAnimationState(); // ⚡ Clear animation queue for new game
+    clearGameCards(); // 🎯 SSOT: Clear game cards for new game
     refreshBalance();
     refetchGame();
-  }, [clearLastResult, refreshBalance, refetchGame]);
+  }, [clearLastResult, resetAnimationState, clearGameCards, refreshBalance, refetchGame]);
 
   // Determine which cards/values to display
+  // 🎯 SSOT: Simple logic - use SSOT selectors as primary source
   const displayPlayerCards = useMemo(() => {
+    // Result phase: use snapshot
     if (showingResult && lastGameResult) {
       return lastGameResult.playerCards;
     }
-    if (accumulatedCards.playerCards.length >= 2) {
-      return accumulatedCards.playerCards;
-    }
-    return game?.playerCards ?? [];
-  }, [showingResult, lastGameResult, accumulatedCards, game]);
+    // Active game: use SSOT derived selector (gameCards sliced by revealedCount)
+    return ssotPlayerCards;
+  }, [showingResult, lastGameResult, ssotPlayerCards]);
 
+  // 🎯 SSOT: Dealer cards with hidden card logic built into selector
   const displayDealerCards = useMemo(() => {
+    // Result phase: use snapshot (all cards visible)
     if (showingResult && lastGameResult) {
       return lastGameResult.dealerCards;
     }
-    if (accumulatedCards.dealerCards.length >= 1) {
-      return accumulatedCards.dealerCards;
-    }
-    return game?.dealerCards ?? [];
-  }, [showingResult, lastGameResult, accumulatedCards, game]);
+    // Active game: use SSOT derived selector (handles hidden card automatically)
+    return ssotDealerCards;
+  }, [showingResult, lastGameResult, ssotDealerCards]);
 
   const displayPlayerValue =
     showingResult && lastGameResult ? lastGameResult.playerValue : playerValue;
-  const displayDealerValue =
-    showingResult && lastGameResult ? lastGameResult.dealerValue : dealerValue;
+
+  // ⚠️ SECURITY: Calculate dealer value only from VISIBLE cards (not -1 placeholder)
+  const displayDealerValue = useMemo(() => {
+    if (showingResult && lastGameResult) {
+      return lastGameResult.dealerValue;
+    }
+    // Filter out -1 (hidden card placeholder) and calculate from visible only
+    const visibleCards = displayDealerCards.filter((c) => c !== -1);
+    if (visibleCards.length === 0) return undefined;
+
+    // Calculate Blackjack hand value
+    let value = 0;
+    let aces = 0;
+    for (const card of visibleCards) {
+      const rank = card % 13;
+      if (rank === 0) {
+        aces++;
+        value += 11;
+      } else if (rank >= 10) {
+        value += 10;
+      } else {
+        value += rank + 1;
+      }
+    }
+    while (value > 21 && aces > 0) {
+      value -= 10;
+      aces--;
+    }
+    return value;
+  }, [showingResult, lastGameResult, displayDealerCards]);
   const displayBet = showingResult && lastGameResult ? lastGameResult.bet : game?.bet;
   const displayResult = showingResult && lastGameResult ? lastGameResult.result : null;
 
-  // Hide dealer's second card during player turn (not during result)
-  const hideSecondCard = isPlayerTurn && !showingResult;
+  // ⚠️ SECURITY: Hide dealer's second card ALWAYS except when showing final result
+  // Old logic `isPlayerTurn && !showingResult` was exposing during VRF wait
+  const hideSecondCard = !showingResult;
+
+  // ⚡ DEAL PHASE TRANSITIONS
+  // Orchestrate: placeBet → cards fly face-down → VRF → sequential flip
+  useEffect(() => {
+    // When in dealing phase and waiting for VRF (isLoading is true)
+    // Stay in dealing phase - cards will animate in face-down
+    if (dealPhase === 'dealing' && !actions.isLoading) {
+      // VRF completed, cards arrived - start sequential reveal
+      setDealPhase('revealing');
+
+      // Sequential flip: P1, P2, D1 (D2 stays hidden via card === -1)
+      // Each flip 300ms apart
+      setTimeout(() => setFlippedCards((prev) => ({ ...prev, player: [0] })), 100);
+      setTimeout(() => setFlippedCards((prev) => ({ ...prev, player: [0, 1] })), 400);
+      setTimeout(() => setFlippedCards((prev) => ({ ...prev, dealer: [0] })), 700);
+      setTimeout(() => setDealPhase('player_turn'), 1000);
+    }
+
+    // When isPlayerTurn changes and we're in player_turn phase
+    if (dealPhase === 'player_turn' && !isPlayerTurn && !showingResult) {
+      // Player finished, transition to dealer turn
+      setDealPhase('dealer_turn');
+    }
+
+    // ⚡ DEALER TURN ANIMATION: When result arrives, animate dealer cards first
+    if (showingResult && dealPhase !== 'result' && !showResultOverlay) {
+      setDealPhase('dealer_turn');
+
+      // Animate dealer card reveal sequence
+      // 1. Reveal hidden card (dealer card index 1)
+      setTimeout(() => {
+        setFlippedCards((prev) => ({ ...prev, dealer: [0, 1] })); // Reveal hidden card
+      }, 300);
+
+      // 2. Show all remaining dealer cards one by one
+      const dealerCardCount = lastGameResult?.dealerCards.length ?? 2;
+      for (let i = 2; i < dealerCardCount; i++) {
+        setTimeout(
+          () => {
+            setFlippedCards((prev) => ({ ...prev, dealer: [...prev.dealer, i] }));
+          },
+          300 + (i - 1) * 300
+        );
+      }
+
+      // 3. Total animation time before showing result
+      const animationTime = 300 + Math.max(0, dealerCardCount - 2) * 300 + 800;
+
+      setTimeout(() => {
+        setFlippedCards({ player: [0, 1, 2, 3, 4, 5], dealer: [0, 1, 2, 3, 4, 5] });
+        setDealPhase('result');
+        setShowResultOverlay(true);
+      }, animationTime);
+    }
+
+    // Reset to idle when no active game
+    if (!hasActiveGame && !showingResult && dealPhase !== 'idle') {
+      setFlippedCards({ player: [], dealer: [] });
+      setShowResultOverlay(false);
+      setDealPhase('idle');
+    }
+  }, [
+    dealPhase,
+    actions.isLoading,
+    isPlayerTurn,
+    showingResult,
+    hasActiveGame,
+    showResultOverlay,
+    lastGameResult,
+  ]);
 
   // Format bet for display
   const formatBetDisplay = (bet: bigint | undefined) => {
@@ -263,6 +409,13 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         hideSecond={hideSecondCard}
                         result={displayResult === 'lose' ? 'win' : null}
                         hideValue
+                        flippedIndices={
+                          ssotDealerCards.length > 0
+                            ? flippedDealerIndices // ⚡ Use Zustand animation state
+                            : dealPhase === 'dealing' || dealPhase === 'revealing'
+                              ? flippedCards.dealer
+                              : undefined
+                        }
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} isDealer />
@@ -289,6 +442,13 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         value={displayPlayerValue ?? undefined}
                         result={displayResult}
                         hideValue
+                        flippedIndices={
+                          ssotPlayerCards.length > 0
+                            ? flippedPlayerIndices // ⚡ Use Zustand animation state
+                            : dealPhase === 'dealing' || dealPhase === 'revealing'
+                              ? flippedCards.player
+                              : undefined
+                        }
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} />
@@ -393,8 +553,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
         </div>
       </main>
 
-      {/* Full-screen result overlay */}
-      {showingResult && lastGameResult && displayResult && (
+      {/* Full-screen result overlay - only show after dealer animation completes */}
+      {showResultOverlay && lastGameResult && displayResult && (
         <GameResultOverlay
           result={displayResult}
           playerCards={[...displayPlayerCards]}
@@ -414,6 +574,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           onChangeBet={handleNewGame}
         />
       )}
+
+      {/* 🧪 TEST: Animation System Test Panel - DELETE AFTER TESTING */}
+      <AnimationSystemTest />
     </div>
   );
 }

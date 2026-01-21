@@ -159,10 +159,17 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   const accumulatedCards = useGameStore(selectAccumulatedCards);
   const showingResult = useGameStore(selectShowingResult);
   const {
-    setLastGameResult,
     clearLastResult: storeClearResult,
     addCard,
     resetCards,
+    // ⚡ Animation queue actions
+    queueCardDeal,
+    queueCardFlip,
+    queueResult,
+    setGamePhase,
+    // 🎯 SSOT actions
+    addGameCard,
+    revealNextCard,
   } = useGameStore();
 
   // Snapshot ref - backup of cards before action
@@ -192,18 +199,32 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     logger.log('[GameStateCasino] Cards snapshot taken:', snapshot);
   }, [accumulatedCards, service.game]);
 
-  // Handle CardDealt event - accumulate cards
+  // Handle CardDealt event - use SSOT for card storage, animation for visibility
   const handleCardDealt = useCallback(
     (event: CardDealtEvent) => {
       logger.log('[GameStateCasino] CardDealt:', event);
 
-      // Use Zustand store's addCard
-      addCard(event.card, event.isDealer, event.faceUp);
+      // ⚡ PHASE TRACKING: Transition to dealing_initial on first card
+      const currentPhase = useGameStore.getState().gamePhase;
+      if (currentPhase === 'waiting_vrf' || currentPhase === 'idle') {
+        setGamePhase('dealing_initial');
+      }
 
-      // DO NOT refetch here - it causes re-render loops!
-      // Events are the source of truth for card accumulation
+      // 🎯 SSOT: Add card to authoritative game state IMMEDIATELY
+      // This ensures cards are NEVER lost, regardless of animation state
+      const isHidden = event.isDealer && !event.faceUp;
+      addGameCard(event.card, event.isDealer, isHidden);
+
+      // 🎯 SSOT: Reveal card after short delay (animation timing)
+      // This controls VISIBILITY, not data
+      setTimeout(() => {
+        revealNextCard(event.isDealer);
+      }, 150); // Small delay for visual effect
+
+      // Legacy: Still accumulate for backwards compatibility during transition
+      addCard(event.card, event.isDealer, event.faceUp);
     },
-    [] // No dependencies - pure state update
+    [addGameCard, revealNextCard, addCard, setGamePhase]
   );
 
   // Handle GameResolved event from WebSocket (V6 GamePlayed event)
@@ -218,6 +239,9 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         accumulatedDealer: accumulatedCardsRef.current.dealerCards,
         hiddenCard: accumulatedCardsRef.current.dealerHiddenCard,
       });
+
+      // ⚡ PHASE 5: Set dealer reveal phase
+      setGamePhase('dealer_reveal');
 
       // Delay 50ms to allow CardDealt events to be processed first
       // Rise is very fast, events may arrive nearly simultaneously
@@ -283,8 +307,23 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           payout: event.payout.toString(),
         });
 
-        // Use Zustand store
-        setLastGameResult({
+        // ⚡ PHASE 5: Queue dealer hidden card flip (index 1) for sequential reveal
+        // Dealer already has visible cards from deal, just need to flip hidden one
+        const visibleDealerCount = useGameStore.getState().visibleDealerCards.length;
+        if (visibleDealerCount >= 2) {
+          // Queue flip for index 1 (hidden card position)
+          queueCardFlip(1, true);
+        }
+
+        // ⚡ PHASE 5: Queue additional dealer cards if any (from dealer hitting)
+        const knownDealerCards = useGameStore.getState().visibleDealerCards;
+        for (let i = knownDealerCards.length; i < dealerCards.length; i++) {
+          queueCardDeal(dealerCards[i], true, true);
+          queueCardFlip(i, true);
+        }
+
+        // Build hand snapshot for result
+        const snapshot = {
           result: event.result,
           payout: event.payout,
           playerValue,
@@ -292,7 +331,10 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           playerCards,
           dealerCards,
           bet: 0n,
-        });
+        };
+
+        // ⚡ PHASE 5: Queue result reveal (animation processor will handle delay)
+        queueResult(snapshot);
 
         // Clear accumulated cards for next game via store
         resetCards();
@@ -308,7 +350,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         }, 5000);
       }, 50); // 50ms delay - matches ETH version, Rise Chain is fast
     },
-    [] // No dependencies - we use refs for current values
+    [setGamePhase, queueCardFlip, queueCardDeal, queueResult, resetCards]
   );
 
   const clearLastResult = useCallback(() => {
@@ -343,13 +385,34 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     return state === WAITING_VRF || state === WAITING_HIT_VRF;
   }, [service.game]);
 
+  // ⚡ LOCAL VALUE CALCULATION: Instant updates as cards arrive
+  // Calculate from accumulatedCards instead of waiting for contract refetch
+  const localPlayerValue = useMemo(() => {
+    if (accumulatedCards.playerCards.length > 0) {
+      return calculateLocalHandValue(accumulatedCards.playerCards);
+    }
+    return service.playerValue; // Fallback to contract value
+  }, [accumulatedCards.playerCards, service.playerValue]);
+
+  const localDealerValue = useMemo(() => {
+    // During player turn, only count first card (second is hidden)
+    if (isPlayerTurn && accumulatedCards.dealerCards.length >= 2) {
+      return calculateLocalHandValue([accumulatedCards.dealerCards[0]]);
+    }
+    // Otherwise count all visible cards
+    if (accumulatedCards.dealerCards.length > 0) {
+      return calculateLocalHandValue(accumulatedCards.dealerCards);
+    }
+    return service.dealerValue; // Fallback to contract value
+  }, [accumulatedCards.dealerCards, service.dealerValue, isPlayerTurn]);
+
   // showingResult already from store selector above
 
   return {
     // Game state
     game: service.game,
-    playerValue: service.playerValue,
-    dealerValue: service.dealerValue,
+    playerValue: localPlayerValue, // ⚡ Local calculation for instant updates
+    dealerValue: localDealerValue, // ⚡ Local calculation for instant updates
     isFetching: service.isFetching,
 
     // Card accumulator

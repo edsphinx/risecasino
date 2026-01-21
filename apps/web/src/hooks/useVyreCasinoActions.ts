@@ -9,12 +9,10 @@
 
 import { useState, useCallback } from 'preact/hooks';
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from 'viem';
+import { P256, Signature } from 'ox';
 import { getProvider } from '@/lib/riseWallet';
-import {
-  signWithSessionKey,
-  ensureSessionKey,
-  type SessionKeyData,
-} from '@/services/sessionKey.service';
+import { useSessionStore } from '@/stores/sessionStore';
+import { useGameStore } from '@/stores/gameStore';
 import { ErrorService, TokenService } from '@/services';
 import {
   VYRECASINO_ABI,
@@ -71,9 +69,10 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
   /**
    * Wait for transaction status with polling
-   * Matches Meteoro's waitForTransactionStatus
+   * ⚡ OPTIMIZED: Reduced from 30 to 10 attempts (2s vs 6s max)
+   *    WebSocket events now handle real-time confirmation
    */
-  const waitForTransactionStatus = async (provider: any, callId: string, maxAttempts = 30) => {
+  const waitForTransactionStatus = async (provider: any, callId: string, maxAttempts = 10) => {
     logger.log(`[VyreCasino] Polling transaction status for: ${callId}`);
 
     for (let i = 0; i < maxAttempts; i++) {
@@ -167,14 +166,22 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
       const provider = getProvider();
 
-      // 1. Get or Create Session Key
-      // This will use existing from localStorage OR create new one via popup
-      let sessionKey: SessionKeyData;
-      try {
-        sessionKey = await ensureSessionKey(address, tokenContext);
-      } catch (err) {
-        logger.error('Failed to ensure session key:', err);
-        throw new Error('Failed to get permissions for game');
+      // 1. Get or Create Session Key from unified Zustand store
+      // Uses USDC context by default
+      const store = useSessionStore.getState();
+      let sessionKey = store.sessionKey;
+
+      // If no valid session key, create one
+      if (!sessionKey || !store.isValid()) {
+        try {
+          sessionKey = await store.createSessionKey(address);
+          if (!sessionKey) {
+            throw new Error('Failed to create session key');
+          }
+        } catch (err) {
+          logger.error('Failed to create session key:', err);
+          throw new Error('Failed to get permissions for game');
+        }
       }
 
       const hexValue = value ? `0x${value.toString(16)}` : '0x0';
@@ -206,9 +213,14 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
             params: prepareParams,
           });
 
-          // 3. Sign Call
+          // 3. Sign Call using P256 directly
           const { digest, ...request } = prepared;
-          const signature = signWithSessionKey(digest, sessionKey);
+          const signature = Signature.toHex(
+            P256.sign({
+              payload: digest,
+              privateKey: sessionKey.privateKey as `0x${string}`,
+            })
+          );
 
           logger.log('[VyreCasino] Signed with session key');
 
@@ -293,6 +305,22 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         // Only fallback to passkey if it's a non-recoverable session error
         // Or if user rejected permissions
         logger.warn('[VyreCasino] Session transaction failed:', err);
+
+        // ⚡ DETECT CORRUPTED SESSION KEY: If the relay says "not authorized",
+        // it means the local session key is out of sync with the relay.
+        // Clear it so the user can create a fresh one.
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (
+          errorMessage.includes('not been authorized') ||
+          errorMessage.includes('not authorized')
+        ) {
+          logger.error('[VyreCasino] Session key rejected by relay - clearing corrupted local key');
+          // Clear the corrupted session key from Zustand store
+          const { clearSession } = await import('@/stores/sessionStore').then((m) =>
+            m.useSessionStore.getState()
+          );
+          clearSession();
+        }
 
         // Use a simple heuristic: if it's "User rejected" don't retry with passkey immediately
         // But for safety/robustness we can try passkey as fallback
@@ -423,6 +451,9 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           return false;
         }
 
+        // ⚡ PHASE TRACKING: Set waiting_vrf phase for riffle shuffle animation
+        useGameStore.getState().setGamePhase('waiting_vrf');
+
         logger.log('[VyreCasino] Play TX:', txHash);
         logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => {});
 
@@ -460,6 +491,11 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         if (!txHash) {
           setError('Action failed');
           return false;
+        }
+
+        // ⚡ PHASE TRACKING: Set waiting_hit phase if hit action
+        if (action === 'hit') {
+          useGameStore.getState().setGamePhase('waiting_vrf');
         }
 
         logger.log(`[VyreCasino] ${action} TX:`, txHash);
