@@ -101,7 +101,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   // ⚡ Game state hook - WebSocket events + card accumulation + snapshots
   const {
     game,
-    playerValue,
     isPlayerTurn,
     hasActiveGame,
     showingResult,
@@ -256,8 +255,34 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return indices;
   }, [revealedCount.dealer, isHiddenCardFlipped]);
 
-  const displayPlayerValue =
-    showingResult && lastGameResult ? lastGameResult.playerValue : playerValue;
+  // 🎯 SSOT: Calculate player value from displayPlayerCards (not legacy playerValue)
+  const displayPlayerValue = useMemo(() => {
+    if (showingResult && lastGameResult) {
+      return lastGameResult.playerValue;
+    }
+    // Calculate from SSOT displayPlayerCards
+    if (displayPlayerCards.length === 0) return undefined;
+
+    let value = 0;
+    let aces = 0;
+    for (const card of displayPlayerCards) {
+      const rank = card % 13;
+      if (rank === 0) {
+        aces++;
+        value += 11;
+      } else if (rank >= 10) {
+        value += 10;
+      } else {
+        value += rank + 1;
+      }
+    }
+    // Adjust aces
+    while (value > 21 && aces > 0) {
+      value -= 10;
+      aces--;
+    }
+    return value;
+  }, [showingResult, lastGameResult, displayPlayerCards]);
 
   // ⚠️ SECURITY: Calculate dealer value only from VISIBLE cards (not -1 placeholder)
   const displayDealerValue = useMemo(() => {
