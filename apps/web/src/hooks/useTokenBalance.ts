@@ -1,19 +1,16 @@
 /**
  * useTokenBalance Hook
  *
- * Reactive token balance with EVENT-DRIVEN updates + safety fallbacks.
+ * Reactive token balance with EVENT-DRIVEN updates.
  *
- * ⚡ PERFORMANCE OPTIMIZATIONS:
+ * ⚡ UPDATE TRIGGERS:
  * 1. WebSocket listener for ERC20 Transfer events (primary)
  * 2. Game event listener for immediate post-game refresh
  * 3. Tab visibility refresh when user returns to tab
- * 4. Safety net polling every 60s (not aggressive like 10s was)
- * 5. No unnecessary re-renders (useMemo for derived values)
  *
  * 🛡️ FALLBACK MECHANISMS:
  * - WebSocket disconnect: auto-reconnect with exponential backoff
  * - Tab inactive: refresh on visibility change
- * - Missed events: 60s safety net polling as absolute backup
  *
  * 🔧 MAINTAINABILITY:
  * - Uses TokenService for all contract reads (DRY)
@@ -29,12 +26,13 @@ import { VYRECASINO_ADDRESS, riseTestnet } from '@/lib/contract';
 import { logger } from '@/lib/logger';
 
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
-const SAFETY_POLL_INTERVAL = 60000; // 60s safety net (not aggressive)
 const WS_RECONNECT_BASE_DELAY = 2000; // 2s initial reconnect delay
 const WS_MAX_RECONNECT_DELAY = 30000; // Max 30s between reconnects
 
 // ERC20 Transfer event signature
-const TRANSFER_EVENT = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
+const TRANSFER_EVENT = parseAbiItem(
+  'event Transfer(address indexed from, address indexed to, uint256 value)'
+);
 
 interface UseTokenBalanceOptions {
   /** Spender address for allowance check (default: VyreCasino) */
@@ -106,7 +104,10 @@ export function useTokenBalance(
 
     // Only log on first fetch to reduce noise
     if (!hasFetchedRef.current) {
-      logger.log('[useTokenBalance] Initial fetch for:', { token: token.slice(0, 10), account: account.slice(0, 10) });
+      logger.log('[useTokenBalance] Initial fetch for:', {
+        token: token.slice(0, 10),
+        account: account.slice(0, 10),
+      });
     }
 
     setIsLoading(true);
@@ -183,8 +184,10 @@ export function useTokenBalance(
             for (const log of logs) {
               const { from, to } = log.args as { from: `0x${string}`; to: `0x${string}` };
               // If this account sent or received tokens, refresh
-              if (from?.toLowerCase() === account.toLowerCase() ||
-                to?.toLowerCase() === account.toLowerCase()) {
+              if (
+                from?.toLowerCase() === account.toLowerCase() ||
+                to?.toLowerCase() === account.toLowerCase()
+              ) {
                 logger.log('[useTokenBalance] Transfer detected, refreshing');
                 refresh();
                 break; // Only refresh once per batch
@@ -203,7 +206,9 @@ export function useTokenBalance(
               );
               reconnectAttemptRef.current++;
 
-              logger.log(`[useTokenBalance] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`);
+              logger.log(
+                `[useTokenBalance] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
+              );
 
               reconnectTimeoutRef.current = setTimeout(() => {
                 if (isMountedRef.current) {
@@ -217,7 +222,6 @@ export function useTokenBalance(
         unwatchRef.current = unwatch;
         setIsWsConnected(true);
         reconnectAttemptRef.current = 0; // Reset on successful connection
-
       } catch (err) {
         logger.error('[useTokenBalance] Failed to setup WebSocket:', err);
         setIsWsConnected(false);
@@ -255,19 +259,12 @@ export function useTokenBalance(
     };
   }, [refresh, disableAutoRefresh]);
 
-  // 🛡️ FALLBACK 2: Safety net polling every 60s (only when tab active)
-  useEffect(() => {
-    if (disableAutoRefresh || !isActiveTab || !token || !account) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      logger.log('[useTokenBalance] Safety net refresh (60s)');
-      refresh();
-    }, SAFETY_POLL_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [disableAutoRefresh, isActiveTab, token, account, refresh]);
+  // ⚡ REMOVED: Safety net polling was redundant
+  // We now rely entirely on:
+  // 1. WebSocket Transfer events (primary)
+  // 2. Game resolved custom events
+  // 3. Tab visibility refresh
+  // This reduces RPC calls significantly while maintaining reactivity
 
   // ⚡ OPTIMIZATION: Memoized derived values
   const formattedBalance = useMemo(() => {

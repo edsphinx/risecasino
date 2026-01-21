@@ -33,6 +33,35 @@ const decimalsCache = new Map<string, number>();
 const symbolCache = new Map<string, string>();
 const nameCache = new Map<string, string>();
 
+// ⚡ Allowance cache - 30s TTL to reduce redundant calls
+const ALLOWANCE_CACHE_TTL_MS = 30000;
+const allowanceCache = new Map<string, { result: AllowanceState; expiry: number }>();
+
+/**
+ * Invalidate allowance cache for a specific owner
+ * Call this after approval transactions
+ */
+function invalidateAllowanceCache(token?: string, owner?: string): void {
+  if (!token && !owner) {
+    // Clear all
+    allowanceCache.clear();
+    logger.log('[TokenService] Allowance cache cleared');
+    return;
+  }
+
+  const tokenLower = token?.toLowerCase();
+  const ownerLower = owner?.toLowerCase();
+
+  for (const key of allowanceCache.keys()) {
+    const shouldDelete =
+      (tokenLower && key.includes(tokenLower)) || (ownerLower && key.includes(ownerLower));
+    if (shouldDelete) {
+      allowanceCache.delete(key);
+    }
+  }
+  logger.log('[TokenService] Allowance cache invalidated for:', { token, owner });
+}
+
 /**
  * Get token decimals (cached forever - immutable)
  * ⚡ Cache hit avoids RPC call entirely
@@ -76,17 +105,26 @@ async function getBalance(token: `0x${string}`, account: `0x${string}`): Promise
 
 /**
  * Get allowance for spender (defaults to VyreCasino)
+ * ⚡ Uses 30s TTL cache to reduce redundant calls
  */
 async function getAllowance(
   token: `0x${string}`,
   owner: `0x${string}`,
   spender: `0x${string}` = VYRECASINO_ADDRESS
 ): Promise<AllowanceState> {
+  // ⚡ Check cache first
+  const cacheKey = `${token}-${owner}-${spender}`.toLowerCase();
+  const cached = allowanceCache.get(cacheKey);
+
+  if (cached && cached.expiry > Date.now()) {
+    logger.log('[TokenService] getAllowance CACHE HIT:', cacheKey.slice(0, 30));
+    return cached.result;
+  }
+
   logger.log('[TokenService] getAllowance called:', {
     token: token,
     owner: owner,
     spender: spender,
-    VYRECASINO_ADDRESS: VYRECASINO_ADDRESS,
   });
 
   const amount = await publicClient.readContract({
@@ -100,17 +138,22 @@ async function getAllowance(
   const isUnlimited = amount > 10n ** 30n;
   const isApproved = amount > 0n;
 
+  const result: AllowanceState = {
+    amount,
+    isUnlimited,
+    isApproved,
+  };
+
+  // ⚡ Cache result with TTL
+  allowanceCache.set(cacheKey, { result, expiry: Date.now() + ALLOWANCE_CACHE_TTL_MS });
+
   logger.log('[TokenService] getAllowance result:', {
     amount: amount.toString(),
     isUnlimited,
     isApproved,
   });
 
-  return {
-    amount,
-    isUnlimited,
-    isApproved,
-  };
+  return result;
 }
 
 /**
@@ -173,5 +216,6 @@ export const TokenService = {
   getSymbol,
   getName,
   getTokenInfo,
+  invalidateAllowanceCache,
   publicClient,
 } as const;
