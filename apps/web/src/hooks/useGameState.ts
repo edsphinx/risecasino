@@ -20,7 +20,7 @@
  * - Reusable for CHIP and USDC games
  */
 
-import { useCallback, useRef, useMemo } from 'preact/hooks';
+import { useCallback, useRef, useMemo, useEffect } from 'preact/hooks';
 import { useGameService } from './useGameService';
 import {
   useGameStore,
@@ -170,6 +170,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     // 🎯 SSOT actions
     addGameCard,
     revealNextCard,
+    clearGameCards,
   } = useGameStore();
 
   // Snapshot ref - backup of cards before action
@@ -199,7 +200,47 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     logger.log('[GameStateCasino] Cards snapshot taken:', snapshot);
   }, [accumulatedCards, service.game]);
 
-  // Handle CardDealt event - use SSOT for card storage, animation for visibility
+  // 🎯 SSOT: Hydrate gameCards from contract state on mount/game change
+  // This ensures SSOT is synced when page reloads with active game
+  const lastHydratedGameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const game = service.game;
+    if (!game) return;
+
+    // Create unique key for this game state to avoid re-hydrating same game
+    const gameKey = `${game.playerCards.join(',')}-${game.dealerCards.join(',')}`;
+    if (lastHydratedGameRef.current === gameKey) return;
+
+    // Only hydrate if SSOT is empty but contract has cards
+    const ssotState = useGameStore.getState();
+    const ssotHasCards = ssotState.gameCards.playerCards.length > 0;
+    const contractHasCards = game.playerCards.length > 0;
+
+    if (contractHasCards && !ssotHasCards) {
+      logger.log('[GameStateCasino] Hydrating SSOT from contract:', game);
+
+      // Clear and re-populate SSOT
+      clearGameCards();
+
+      // Add player cards
+      game.playerCards.forEach((card: number) => {
+        addGameCard(card, false, false);
+        revealNextCard(false);
+      });
+
+      // Add dealer cards (second card is hidden until result)
+      game.dealerCards.forEach((card: number, i: number) => {
+        const isHidden = i === 1; // Second card is hidden
+        addGameCard(card, true, isHidden);
+        revealNextCard(true);
+      });
+
+      lastHydratedGameRef.current = gameKey;
+    }
+  }, [service.game, clearGameCards, addGameCard, revealNextCard]);
+
+  // Handle CardDealt event - use SSOT for card storage
   const handleCardDealt = useCallback(
     (event: CardDealtEvent) => {
       logger.log('[GameStateCasino] CardDealt:', event);
@@ -210,16 +251,11 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         setGamePhase('dealing_initial');
       }
 
-      // 🎯 SSOT: Add card to authoritative game state IMMEDIATELY
-      // This ensures cards are NEVER lost, regardless of animation state
+      // 🎯 SSOT: Add card and reveal IMMEDIATELY
+      // No setTimeout - cards should appear instantly as events arrive
       const isHidden = event.isDealer && !event.faceUp;
       addGameCard(event.card, event.isDealer, isHidden);
-
-      // 🎯 SSOT: Reveal card after short delay (animation timing)
-      // This controls VISIBILITY, not data
-      setTimeout(() => {
-        revealNextCard(event.isDealer);
-      }, 150); // Small delay for visual effect
+      revealNextCard(event.isDealer);
 
       // Legacy: Still accumulate for backwards compatibility during transition
       addCard(event.card, event.isDealer, event.faceUp);

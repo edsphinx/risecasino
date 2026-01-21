@@ -25,11 +25,7 @@ import { useTokenBalance } from '@/hooks/useTokenBalance';
 import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
 import { useAnimationProcessor } from '@/hooks/useAnimationProcessor';
-import {
-  useGameStore,
-  selectFlippedPlayerIndices,
-  selectFlippedDealerIndices,
-} from '@/stores/gameStore';
+import { useGameStore } from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
 import { ActionButtons } from './ActionButtons';
@@ -74,12 +70,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     | 'result';
   const [dealPhase, setDealPhase] = useState<DealPhase>('idle');
 
-  // Track which cards have been flipped (for sequential reveal)
-  const [flippedCards, setFlippedCards] = useState<{ player: number[]; dealer: number[] }>({
-    player: [],
-    dealer: [],
-  });
-
   // ⚡ DEALER TURN: Control when to show result overlay (after dealer animation completes)
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
@@ -93,9 +83,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   // ⚡ Animation processor - runs queue processing (hook called for side effects)
   useAnimationProcessor();
 
-  // ⚡ Zustand animation state - flipped indices still used in Hand component
-  const flippedPlayerIndices = useGameStore(selectFlippedPlayerIndices);
-  const flippedDealerIndices = useGameStore(selectFlippedDealerIndices);
   const { resetAnimationState, clearGameCards } = useGameStore();
 
   // 🎯 SSOT: Get raw state for card display
@@ -187,7 +174,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     clearLastResult();
     resetAnimationState(); // ⚡ Clear animation queue for new game
     setDealPhase('dealing');
-    setFlippedCards({ player: [], dealer: [] });
+    // 🎯 SSOT: flipping now handled by ssotFlippedIndices
     actions.placeBet(betAmount, token);
   }, [actions, betAmount, token, clearLastResult, resetAnimationState]);
 
@@ -250,6 +237,25 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     isHiddenCardFlipped,
   ]);
 
+  // 🎯 SSOT: Derive flipped indices from SSOT state
+  // All revealed cards should be face-up (flipped) except dealer's hidden card
+  const ssotFlippedPlayerIndices = useMemo(() => {
+    // All player cards are face-up
+    return Array.from({ length: revealedCount.player }, (_, i) => i);
+  }, [revealedCount.player]);
+
+  const ssotFlippedDealerIndices = useMemo(() => {
+    // Dealer cards: all flipped except index 1 (hidden card) unless revealed
+    const indices: number[] = [];
+    for (let i = 0; i < revealedCount.dealer; i++) {
+      // Skip index 1 (hidden card) unless it's been flipped for reveal
+      if (i !== 1 || isHiddenCardFlipped) {
+        indices.push(i);
+      }
+    }
+    return indices;
+  }, [revealedCount.dealer, isHiddenCardFlipped]);
+
   const displayPlayerValue =
     showingResult && lastGameResult ? lastGameResult.playerValue : playerValue;
 
@@ -295,14 +301,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     // When in dealing phase and waiting for VRF (isLoading is true)
     // Stay in dealing phase - cards will animate in face-down
     if (dealPhase === 'dealing' && !actions.isLoading) {
-      // VRF completed, cards arrived - start sequential reveal
+      // VRF completed, cards arrived - transition to revealing
       setDealPhase('revealing');
-
-      // Sequential flip: P1, P2, D1 (D2 stays hidden via card === -1)
-      // Each flip 300ms apart
-      setTimeout(() => setFlippedCards((prev) => ({ ...prev, player: [0] })), 100);
-      setTimeout(() => setFlippedCards((prev) => ({ ...prev, player: [0, 1] })), 400);
-      setTimeout(() => setFlippedCards((prev) => ({ ...prev, dealer: [0] })), 700);
+      // 🎯 SSOT: All flip timing now handled by revealedCount in SSOT
       setTimeout(() => setDealPhase('player_turn'), 1000);
     }
 
@@ -316,28 +317,12 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     if (showingResult && dealPhase !== 'result' && !showResultOverlay) {
       setDealPhase('dealer_turn');
 
-      // Animate dealer card reveal sequence
-      // 1. Reveal hidden card (dealer card index 1)
-      setTimeout(() => {
-        setFlippedCards((prev) => ({ ...prev, dealer: [0, 1] })); // Reveal hidden card
-      }, 300);
-
-      // 2. Show all remaining dealer cards one by one
+      // 🎯 SSOT: Dealer card reveal now handled by isHiddenCardFlipped in SSOT
+      // Just wait for animation time then show result
       const dealerCardCount = lastGameResult?.dealerCards.length ?? 2;
-      for (let i = 2; i < dealerCardCount; i++) {
-        setTimeout(
-          () => {
-            setFlippedCards((prev) => ({ ...prev, dealer: [...prev.dealer, i] }));
-          },
-          300 + (i - 1) * 300
-        );
-      }
-
-      // 3. Total animation time before showing result
       const animationTime = 300 + Math.max(0, dealerCardCount - 2) * 300 + 800;
 
       setTimeout(() => {
-        setFlippedCards({ player: [0, 1, 2, 3, 4, 5], dealer: [0, 1, 2, 3, 4, 5] });
         setDealPhase('result');
         setShowResultOverlay(true);
       }, animationTime);
@@ -345,7 +330,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
 
     // Reset to idle when no active game
     if (!hasActiveGame && !showingResult && dealPhase !== 'idle') {
-      setFlippedCards({ player: [], dealer: [] });
       setShowResultOverlay(false);
       setDealPhase('idle');
     }
@@ -418,13 +402,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         hideSecond={hideSecondCard}
                         result={displayResult === 'lose' ? 'win' : null}
                         hideValue
-                        flippedIndices={
-                          displayDealerCards.length > 0
-                            ? flippedDealerIndices // ⚡ Use Zustand animation state
-                            : dealPhase === 'dealing' || dealPhase === 'revealing'
-                              ? flippedCards.dealer
-                              : undefined
-                        }
+                        flippedIndices={ssotFlippedDealerIndices}
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} isDealer />
@@ -451,13 +429,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         value={displayPlayerValue ?? undefined}
                         result={displayResult}
                         hideValue
-                        flippedIndices={
-                          displayPlayerCards.length > 0
-                            ? flippedPlayerIndices // ⚡ Use Zustand animation state
-                            : dealPhase === 'dealing' || dealPhase === 'revealing'
-                              ? flippedCards.player
-                              : undefined
-                        }
+                        flippedIndices={ssotFlippedPlayerIndices}
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} />

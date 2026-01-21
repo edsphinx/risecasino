@@ -451,6 +451,9 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           return false;
         }
 
+        // 🎯 SSOT: Clear game cards BEFORE starting new game
+        useGameStore.getState().clearGameCards();
+
         // ⚡ PHASE TRACKING: Set waiting_vrf phase for riffle shuffle animation
         useGameStore.getState().setGamePhase('waiting_vrf');
 
