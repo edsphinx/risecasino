@@ -171,6 +171,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     addGameCard,
     revealNextCard,
     clearGameCards,
+    flipHiddenCard,
   } = useGameStore();
 
   // Snapshot ref - backup of cards before action
@@ -203,22 +204,33 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   // 🎯 SSOT: Hydrate gameCards from contract state on mount/game change
   // This ensures SSOT is synced when page reloads with active game
   const lastHydratedGameRef = useRef<string | null>(null);
+  const hasHydratedThisSession = useRef(false);
 
   useEffect(() => {
     const game = service.game;
-    if (!game) return;
 
-    // Create unique key for this game state to avoid re-hydrating same game
+    // Reset tracking when game ends (contract shows no cards)
+    if (!game || game.playerCards.length === 0) {
+      lastHydratedGameRef.current = null;
+      hasHydratedThisSession.current = false;
+      return;
+    }
+
+    // Create unique key for this game state
     const gameKey = `${game.playerCards.join(',')}-${game.dealerCards.join(',')}`;
+
+    // Skip if we already processed this exact game state
     if (lastHydratedGameRef.current === gameKey) return;
 
-    // Only hydrate if SSOT is empty but contract has cards
+    // Only hydrate on initial load (SSOT empty) and not already hydrated this session
+    // This prevents double-hydration when CardDealt events race with contract poll
     const ssotState = useGameStore.getState();
     const ssotHasCards = ssotState.gameCards.playerCards.length > 0;
     const contractHasCards = game.playerCards.length > 0;
 
-    if (contractHasCards && !ssotHasCards) {
+    if (contractHasCards && !ssotHasCards && !hasHydratedThisSession.current) {
       logger.log('[GameStateCasino] Hydrating SSOT from contract:', game);
+      hasHydratedThisSession.current = true;
 
       // Clear and re-populate SSOT
       clearGameCards();
@@ -278,6 +290,9 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
 
       // ⚡ PHASE 5: Set dealer reveal phase
       setGamePhase('dealer_reveal');
+
+      // 🎯 SSOT: Flip the dealer's hidden card (index 1) face-up
+      flipHiddenCard();
 
       // Delay 50ms to allow CardDealt events to be processed first
       // Rise is very fast, events may arrive nearly simultaneously
