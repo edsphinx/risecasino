@@ -172,10 +172,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const handlePlaceBet = useCallback(() => {
     clearLastResult();
     resetAnimationState(); // ⚡ Clear animation queue for new game
-    setDealPhase('dealing');
+    clearGameCards(); // 🎯 SSOT: Clear IMMEDIATELY to prevent hydration race
+    setDealPhase('waiting_vrf'); // ⚡ Show shuffle animation while VRF pending
     // 🎯 SSOT: flipping now handled by ssotFlippedIndices
     actions.placeBet(betAmount, token);
-  }, [actions, betAmount, token, clearLastResult, resetAnimationState]);
+  }, [actions, betAmount, token, clearLastResult, resetAnimationState, clearGameCards]);
 
   const handleHit = useCallback(() => {
     snapshotCards();
