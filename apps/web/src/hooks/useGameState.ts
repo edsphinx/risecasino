@@ -324,11 +324,16 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         const currentSnapshot = cardSnapshotRef.current;
 
         // Get cards from multiple sources (best available)
-        // Priority: accumulated > snapshot > contract state
+        // Priority: SSOT gameCards > accumulated > snapshot > contract state
         let playerCards: number[] = [];
         let dealerCards: number[] = [];
 
-        if (currentAccumulated.playerCards.length >= 2) {
+        // 🎯 SSOT: Use gameCards as first priority
+        const ssotCards = useGameStore.getState().gameCards;
+        if (ssotCards.playerCards.length >= 2) {
+          playerCards = [...ssotCards.playerCards];
+          logger.log('[GameStateCasino] Using SSOT player cards:', playerCards);
+        } else if (currentAccumulated.playerCards.length >= 2) {
           playerCards = [...currentAccumulated.playerCards];
           logger.log('[GameStateCasino] Using accumulated player cards:', playerCards);
         } else if (currentSnapshot?.playerCards.length) {
@@ -339,7 +344,12 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           logger.log('[GameStateCasino] Using contract player cards:', playerCards);
         }
 
-        if (currentAccumulated.dealerCards.length >= 1) {
+        // 🎯 SSOT: Use gameCards as first priority for dealer cards too
+        if (ssotCards.dealerCards.length >= 1) {
+          dealerCards = [...ssotCards.dealerCards];
+          // Hidden card is already in dealerCards array for SSOT
+          logger.log('[GameStateCasino] Using SSOT dealer cards:', dealerCards);
+        } else if (currentAccumulated.dealerCards.length >= 1) {
           dealerCards = [...currentAccumulated.dealerCards];
           // Add hidden card if exists
           if (
