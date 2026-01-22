@@ -513,7 +513,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     canSurrender={game?.playerCards.length === 2}
                     isLoading={actions.isLoading}
                   />
-                ) : hasActiveGame ? (
+                ) : hasActiveGame || dealPhase === 'dealer_turn' || dealPhase === 'result' ? (
                   <div className="text-center py-4">
                     <p className="text-yellow-400 animate-pulse">⏳ Waiting for dealer...</p>
                   </div>
