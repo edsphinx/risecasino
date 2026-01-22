@@ -59,15 +59,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const [xpPopup, setXpPopup] = useState<XPPopupState | null>(null);
 
   // ⚡ DEAL PHASE: Controls sequential card dealing and flip animations
-  // idle → dealing → waiting_vrf → revealing → player_turn → dealer_turn → result
-  type DealPhase =
-    | 'idle'
-    | 'dealing'
-    | 'waiting_vrf'
-    | 'revealing'
-    | 'player_turn'
-    | 'dealer_turn'
-    | 'result';
+  // idle → waiting_vrf (shuffle) → dealing (cards arriving) → player_turn → dealer_turn → result
+  type DealPhase = 'idle' | 'waiting_vrf' | 'dealing' | 'player_turn' | 'dealer_turn' | 'result';
   const [dealPhase, setDealPhase] = useState<DealPhase>('idle');
 
   // ⚡ DEALER TURN: Control when to show result overlay (after dealer animation completes)
@@ -322,15 +315,16 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const hideSecondCard = !showingResult;
 
   // ⚡ DEAL PHASE TRANSITIONS
-  // Orchestrate: placeBet → cards fly face-down → VRF → sequential flip
+  // Orchestrate: placeBet → waiting_vrf (shuffle) → dealing (cards arrive) → player_turn
   useEffect(() => {
-    // When in dealing phase and waiting for VRF (isLoading is true)
-    // Stay in dealing phase - cards will animate in face-down
-    if (dealPhase === 'dealing' && !actions.isLoading) {
-      // VRF completed, cards arrived - transition to revealing
-      setDealPhase('revealing');
-      // 🎯 SSOT: All flip timing now handled by revealedCount in SSOT
-      setTimeout(() => setDealPhase('player_turn'), 1000);
+    // waiting_vrf → dealing: When first card arrives (displayPlayerCards populated)
+    if (dealPhase === 'waiting_vrf' && displayPlayerCards.length > 0) {
+      setDealPhase('dealing');
+    }
+
+    // dealing → player_turn: When loading completes and cards are dealt
+    if (dealPhase === 'dealing' && !actions.isLoading && displayPlayerCards.length >= 2) {
+      setDealPhase('player_turn');
     }
 
     // When isPlayerTurn changes and we're in player_turn phase
@@ -367,6 +361,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     hasActiveGame,
     showResultOverlay,
     lastGameResult,
+    displayPlayerCards.length,
   ]);
 
   // Format bet for display
