@@ -451,8 +451,8 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           return false;
         }
 
-        // 🎯 SSOT: Clear game cards BEFORE starting new game
-        useGameStore.getState().clearGameCards();
+        // Note: clearGameCards() is called in handlePlaceBet BEFORE this action runs
+        // Do NOT call it here - CardDealt events will have already populated SSOT
 
         // ⚡ PHASE TRACKING: Set waiting_vrf phase for riffle shuffle animation
         useGameStore.getState().setGamePhase('waiting_vrf');

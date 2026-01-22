@@ -228,8 +228,18 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     const ssotHasCards = ssotState.gameCards.playerCards.length > 0;
     const contractHasCards = game.playerCards.length > 0;
 
+    // Only hydrate on PAGE RELOAD when SSOT is empty but contract has cards
+    // During normal gameplay, CardDealt events populate SSOT - DO NOT hydrate
     if (contractHasCards && !ssotHasCards && !hasHydratedThisSession.current) {
-      logger.log('[GameStateCasino] Hydrating SSOT from contract:', game);
+      // Double-check: if SSOT just got cleared for new game, wait for CardDealt events
+      // This prevents race where hydration runs before CardDealt events arrive
+      const isNewGameInProgress = useGameStore.getState().gamePhase === 'waiting_vrf';
+      if (isNewGameInProgress) {
+        console.log('[HYDRATION] Skipping - new game in progress, waiting for CardDealt events');
+        return;
+      }
+
+      console.warn('🔴 [HYDRATION] Starting hydration from contract:', game);
       hasHydratedThisSession.current = true;
 
       // Clear and re-populate SSOT
@@ -237,6 +247,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
 
       // Add player cards
       game.playerCards.forEach((card: number) => {
+        console.warn('🔴 [HYDRATION] Adding player card:', card);
         addGameCard(card, false, false);
         revealNextCard(false);
       });
@@ -244,6 +255,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       // Add dealer cards (second card is hidden until result)
       game.dealerCards.forEach((card: number, i: number) => {
         const isHidden = i === 1; // Second card is hidden
+        console.warn('🔴 [HYDRATION] Adding dealer card:', card, 'hidden:', isHidden);
         addGameCard(card, true, isHidden);
         revealNextCard(true);
       });

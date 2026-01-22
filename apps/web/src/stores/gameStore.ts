@@ -391,6 +391,16 @@ export const useGameStore = create<GameStore>((set) => ({
   // 🎯 SSOT: Add card to game cards
   addGameCard: (card, isDealer, isHidden) =>
     set((state) => {
+      // 🔍 DEBUG: Trace card additions
+      console.log('[SSOT] addGameCard:', {
+        card,
+        isDealer,
+        isHidden,
+        currentPlayerCards: state.gameCards.playerCards,
+        currentDealerCards: state.gameCards.dealerCards,
+        stack: new Error().stack?.split('\n').slice(2, 5).join('\n'),
+      });
+
       if (isDealer) {
         if (isHidden) {
           return {
