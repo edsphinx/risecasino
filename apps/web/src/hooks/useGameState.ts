@@ -233,11 +233,21 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     // Only hydrate on PAGE RELOAD when SSOT is empty but contract has cards
     // During normal gameplay, CardDealt events populate SSOT - DO NOT hydrate
     if (contractHasCards && !ssotHasCards && !hasHydratedThisSession.current) {
-      // Double-check: if SSOT just got cleared for new game, wait for CardDealt events
-      // This prevents race where hydration runs before CardDealt events arrive
-      const isNewGameInProgress = useGameStore.getState().gamePhase === 'waiting_vrf';
-      if (isNewGameInProgress) {
-        logger.log('[HYDRATION] Skipping - new game in progress');
+      // Only hydrate when gamePhase is 'idle' (true page reload)
+      // Skip if any other phase - means game is in progress or just finished
+      const currentPhase = useGameStore.getState().gamePhase;
+      if (currentPhase !== 'idle') {
+        logger.log('[HYDRATION] Skipping - gamePhase is:', currentPhase);
+        return;
+      }
+
+      // Only hydrate if contract shows game is actually in active state
+      // Game in final state (PLAYER_WIN, etc) means previous game - don't restore
+      const gameState = game.state;
+      const isGameActive =
+        gameState !== IDLE && gameState !== undefined && !isFinalState(gameState);
+      if (!isGameActive) {
+        logger.log('[HYDRATION] Skipping - game not active, state:', gameState);
         return;
       }
 
