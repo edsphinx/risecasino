@@ -185,21 +185,23 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   serviceRef.current = service;
 
   // Take snapshot of current cards (call before actions)
+  // 🎯 SSOT: Use gameCards as primary source, fallback to contract
   const snapshotCards = useCallback(() => {
+    const ssot = useGameStore.getState().gameCards;
     const snapshot: CardAccumulator = {
       playerCards:
-        accumulatedCards.playerCards.length > 0
-          ? [...accumulatedCards.playerCards]
+        ssot.playerCards.length > 0
+          ? [...ssot.playerCards]
           : [...(service.game?.playerCards ?? [])],
       dealerCards:
-        accumulatedCards.dealerCards.length > 0
-          ? [...accumulatedCards.dealerCards]
+        ssot.dealerCards.length > 0
+          ? [...ssot.dealerCards]
           : [...(service.game?.dealerCards ?? [])],
-      dealerHiddenCard: accumulatedCards.dealerHiddenCard,
+      dealerHiddenCard: ssot.dealerHiddenCard,
     };
     cardSnapshotRef.current = snapshot;
     logger.log('[GameStateCasino] Cards snapshot taken:', snapshot);
-  }, [accumulatedCards, service.game]);
+  }, [service.game]);
 
   // 🎯 SSOT: Hydrate gameCards from contract state on mount/game change
   // This ensures SSOT is synced when page reloads with active game
@@ -235,11 +237,11 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       // This prevents race where hydration runs before CardDealt events arrive
       const isNewGameInProgress = useGameStore.getState().gamePhase === 'waiting_vrf';
       if (isNewGameInProgress) {
-        console.log('[HYDRATION] Skipping - new game in progress, waiting for CardDealt events');
+        logger.log('[HYDRATION] Skipping - new game in progress');
         return;
       }
 
-      console.warn('🔴 [HYDRATION] Starting hydration from contract:', game);
+      logger.log('[HYDRATION] Hydrating SSOT from contract:', game);
       hasHydratedThisSession.current = true;
 
       // Clear and re-populate SSOT
@@ -247,7 +249,6 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
 
       // Add player cards
       game.playerCards.forEach((card: number) => {
-        console.warn('🔴 [HYDRATION] Adding player card:', card);
         addGameCard(card, false, false);
         revealNextCard(false);
       });
@@ -255,7 +256,6 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       // Add dealer cards (second card is hidden until result)
       game.dealerCards.forEach((card: number, i: number) => {
         const isHidden = i === 1; // Second card is hidden
-        console.warn('🔴 [HYDRATION] Adding dealer card:', card, 'hidden:', isHidden);
         addGameCard(card, true, isHidden);
         revealNextCard(true);
       });
