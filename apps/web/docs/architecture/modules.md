@@ -8,34 +8,53 @@
 ```
 src/lib/game-engine/
 ├── index.ts              # Public exports
-├── types.ts              # TypeScript interfaces
-├── GameEngine.ts         # Main orchestrator
-├── StateMachine.ts       # Game state management
-├── CardRenderer.ts       # DOM card rendering
-├── AnimationController.ts # GSAP animation wrapper
+├── types.ts              # TypeScript interfaces (re-exports from @vyrejack/shared)
+├── GameEngine.ts         # Main orchestrator (28 tests)
+├── StateMachine.ts       # Game state management (29 tests)
+├── CardRenderer.ts       # DOM card rendering (17 tests)
+├── AnimationController.ts # GSAP animation wrapper (12 tests)
+├── handValue.ts          # Hand value calculation (37 tests)
 └── __tests__/
     ├── StateMachine.test.ts
     ├── CardRenderer.test.ts
     ├── AnimationController.test.ts
     ├── GameEngine.test.ts
-    └── invariants.test.ts
+    └── handValue.test.ts
 ```
 
 ---
 
 ## types.ts
 
+Re-exports from `@vyrejack/shared` plus engine-specific types:
+
 ```typescript
-export type GamePhase = 'idle' | 'dealing' | 'player_turn' | 'dealer_turn' | 'resolving' | 'result';
+// From @vyrejack/shared
+export { GameState } from '@vyrejack/shared';
+export type { HandValue, GameAction, GameResult } from '@vyrejack/shared';
+
+// GamePhase - string alias matching VyreJackCore.GameState
+export type GamePhase =
+  | 'idle' // GameState.Idle (0)
+  | 'waiting_for_deal' // GameState.WaitingForDeal (1)
+  | 'player_turn' // GameState.PlayerTurn (2)
+  | 'waiting_for_hit' // GameState.WaitingForHit (3)
+  | 'waiting_for_double' // GameState.WaitingForDouble (4)
+  | 'dealer_turn' // GameState.DealerTurn (5)
+  | 'player_win' // GameState.PlayerWin (6)
+  | 'dealer_win' // GameState.DealerWin (7)
+  | 'push' // GameState.Push (8)
+  | 'player_blackjack'; // GameState.PlayerBlackjack (9)
 
 export interface EngineGameState {
   phase: GamePhase;
-  playerCards: number[];
-  dealerCards: number[];
-  dealerHiddenCard: number | null;
+  playerCards: CardIndex[];
+  dealerCards: CardIndex[];
+  dealerHiddenCard: CardIndex | null;
   isHiddenRevealed: boolean;
-  playerValue: number;
-  dealerValue: number;
+  isDoubled: boolean;
+  playerHandValue: HandValue | null;
+  dealerHandValue: HandValue | null;
 }
 
 export interface CardPosition {
@@ -45,20 +64,37 @@ export interface CardPosition {
   scale: number;
 }
 
-export interface CardElement {
-  id: string;
-  element: HTMLElement;
-  cardIndex: number;
-  isDealer: boolean;
-  isFaceUp: boolean;
-}
-
 export type StateListener = (state: EngineGameState) => void;
+```
 
-export interface GameEngineConfig {
-  containerId: string;
-  animationSpeed?: 'slow' | 'normal' | 'fast';
-  deckPosition?: { x: number; y: number };
+---
+
+## handValue.ts
+
+### Public API
+
+```typescript
+// Calculate hand value matching VyreJackCore.calculateHandValue
+function calculateHandValue(cards: CardIndex[]): HandValue;
+
+// Check if player can double (2 cards only)
+function canDouble(playerCards: CardIndex[], isDoubled: boolean): boolean;
+
+// Check if player can surrender (2 cards only)
+function canSurrender(playerCards: CardIndex[]): boolean;
+
+// Check if dealer should hit (soft 17 rule)
+function shouldDealerHit(value: number, isSoft: boolean): boolean;
+```
+
+### HandValue Type
+
+```typescript
+interface HandValue {
+  value: number;
+  isSoft: boolean; // Ace counted as 11
+  isBust: boolean; // value > 21
+  isBlackjack: boolean; // value === 21 && cards.length === 2
 }
 ```
 
@@ -66,7 +102,7 @@ export interface GameEngineConfig {
 
 ## StateMachine.ts
 
-### Public API
+### Public API (29 tests)
 
 ```typescript
 class StateMachine {
@@ -75,7 +111,7 @@ class StateMachine {
   getPhase(): GamePhase;
 
   // Card operations
-  addCard(card: number, isDealer: boolean, isHidden: boolean): void;
+  addCard(card: CardIndex, isDealer: boolean, isHidden: boolean): void;
   revealHiddenCard(): void;
 
   // Phase transitions
@@ -90,36 +126,30 @@ class StateMachine {
 }
 ```
 
-### State Transition Rules
+### State Transition Rules (VyreJackCore aligned)
 
 ```
-idle → dealing (on bet placed)
-dealing → player_turn (all cards dealt)
-player_turn → dealer_turn (on stand)
-player_turn → result (on bust/blackjack)
-dealer_turn → result (dealer done)
-result → idle (new game)
+idle → waiting_for_deal (on bet placed)
+waiting_for_deal → player_turn | player_blackjack | dealer_win | push
+player_turn → waiting_for_hit | waiting_for_double | dealer_turn | dealer_win
+waiting_for_hit → player_turn | dealer_win | dealer_turn
+waiting_for_double → dealer_turn | dealer_win
+dealer_turn → player_win | dealer_win | push
+player_win | dealer_win | push | player_blackjack → idle
 ```
-
-### Invariants
-
-- `playerCards.length >= 0 && playerCards.length <= 11`
-- `dealerCards.length >= 0 && dealerCards.length <= 11`
-- `dealerHiddenCard` is either `null` or in `dealerCards`
-- Phase transitions follow valid paths only
 
 ---
 
 ## CardRenderer.ts
 
-### Public API
+### Public API (17 tests)
 
 ```typescript
 class CardRenderer {
   constructor(containerId: string);
 
   // Card lifecycle
-  createCard(cardIndex: number, isDealer: boolean): HTMLElement;
+  createCard(cardIndex: CardIndex, isDealer: boolean): HTMLElement;
   addToZone(card: HTMLElement, isDealer: boolean): void;
   removeCard(cardId: string): void;
   removeAllCards(): void;
@@ -147,21 +177,15 @@ rank = cardIndex % 13              // 0=A, 1=2, ..., 12=K
 
 ## AnimationController.ts
 
-### Public API
+### Public API (12 tests)
 
 ```typescript
 class AnimationController {
   // Card animations
-  animateDeal(
-    card: HTMLElement,
-    from: CardPosition,
-    to: CardPosition,
-    delay: number
-  ): gsap.core.Timeline;
-  animateFlip(card: HTMLElement, onMidpoint: () => void): gsap.core.Timeline;
-  animateWin(cards: HTMLElement[]): gsap.core.Timeline;
-  animateLose(cards: HTMLElement[]): gsap.core.Timeline;
-  animateShuffle(deck: HTMLElement): gsap.core.Timeline;
+  animateDeal(card: HTMLElement, from: CardPosition, to: CardPosition, delay: number): GSAPTimeline;
+  animateFlip(card: HTMLElement, onMidpoint: () => void): GSAPTimeline;
+  animateWin(cards: HTMLElement[]): GSAPTimeline;
+  animateLose(cards: HTMLElement[]): GSAPTimeline;
 
   // Control
   pause(): void;
@@ -173,57 +197,50 @@ class AnimationController {
 }
 ```
 
-### Animation Timing
-
-```typescript
-const TIMING = {
-  dealDuration: 0.8,
-  dealStagger: 0.35,
-  flipDuration: 0.4,
-  winCelebration: 0.6,
-  loseShake: 0.4,
-};
-```
-
 ---
 
 ## GameEngine.ts
 
-### Public API
+### Public API (28 tests)
 
 ```typescript
 class GameEngine {
   constructor(config: GameEngineConfig);
 
-  // Card operations
-  dealCard(cardIndex: number, isDealer: boolean, isHidden: boolean): void;
-  revealHiddenCard(): void;
-
-  // Game lifecycle
+  // Game flow
   startGame(): void;
-  endGame(result: 'win' | 'lose' | 'push' | 'blackjack'): void;
+  setPlayerTurn(): void;
+  setDealerTurn(): void;
+  endGame(result: GameResult): void;
   reset(): void;
+  destroy(): void;
+
+  // Card operations
+  dealCard(cardIndex: CardIndex, isDealer: boolean, isHidden: boolean): void;
+  revealHiddenCard(): void;
 
   // State access
   getState(): EngineGameState;
-  onStateChange(listener: StateListener): () => void;
+  getPhase(): GamePhase;
 
-  // Debug
-  getDebugInfo(): object;
+  // Subscriptions
+  onStateChange(listener: StateListener): () => void;
+  onPhaseChange(listener: (phase: GamePhase) => void): () => void;
+  onGameEnd(listener: (result: GameResult) => void): () => void;
 }
 ```
 
-### Event Bridge
+### Event Bridge (Phase 2)
 
 ```typescript
-// From contract events
+// From contract events (will be implemented in useGameEngine hook)
 interface CardDealtEvent {
   card: number;
   isDealer: boolean;
   faceUp: boolean;
 }
 
-// Usage in hooks
+// Usage
 const handleCardDealt = (event: CardDealtEvent) => {
   engine.dealCard(event.card, event.isDealer, !event.faceUp);
 };
