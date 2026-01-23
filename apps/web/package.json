@@ -11,7 +11,10 @@
     "lint": "eslint src --ext .ts,.tsx",
     "clean": "rm -rf dist node_modules/.vite",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:debug": "playwright test --debug",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@vyrejack/shared": "workspace:*",
@@ -25,6 +28,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@preact/preset-vite": "^2.9.4",
     "@testing-library/preact": "^3.2.4",
     "@types/node": "^22.10.2",
