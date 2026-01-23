@@ -1,25 +1,37 @@
 /**
  * GameEngine Type Definitions
  *
- * All types used by the GameEngine modules.
+ * Re-exports shared types and adds engine-specific types.
  * ⚠️ STRICT TYPING: Never use `any` - always create proper interfaces.
  */
 
 // =============================================================================
-// GAME PHASE - Matches VyreJackCore.GameState enum
+// RE-EXPORTS FROM SHARED - Single source of truth
+// =============================================================================
+
+// Types that match contract exactly
+export { GameState } from '@vyrejack/shared';
+export type { HandValue, GameAction, GameResult } from '@vyrejack/shared';
+
+// Re-export cards from shared
+export { Suit, RANK_NAMES, SUIT_SYMBOLS } from '@vyrejack/shared';
+export type { CardDisplay } from '@vyrejack/shared';
+
+// =============================================================================
+// GAME PHASE - String alias for GameState enum (for easier frontend usage)
 // =============================================================================
 
 export type GamePhase =
-    | 'idle' // No active game
-    | 'waiting_for_deal' // Awaiting initial 4 cards from VRF
-    | 'player_turn' // Player can hit/stand/double/surrender
-    | 'waiting_for_hit' // Awaiting hit card from VRF
-    | 'waiting_for_double' // Awaiting double card from VRF
-    | 'dealer_turn' // Dealer is drawing
-    | 'player_win' // Player won
-    | 'dealer_win' // Dealer won
-    | 'push' // Tie - bet returned
-    | 'player_blackjack'; // Player got natural 21
+    | 'idle' // GameState.Idle
+    | 'waiting_for_deal' // GameState.WaitingForDeal
+    | 'player_turn' // GameState.PlayerTurn
+    | 'waiting_for_hit' // GameState.WaitingForHit
+    | 'waiting_for_double' // GameState.WaitingForDouble
+    | 'dealer_turn' // GameState.DealerTurn
+    | 'player_win' // GameState.PlayerWin
+    | 'dealer_win' // GameState.DealerWin
+    | 'push' // GameState.Push
+    | 'player_blackjack'; // GameState.PlayerBlackjack
 
 // Valid phase transitions map
 export const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
@@ -39,44 +51,31 @@ export const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
 export const RESULT_PHASES: GamePhase[] = ['player_win', 'dealer_win', 'push', 'player_blackjack'];
 
 // =============================================================================
-// CARD TYPES
+// CARD TYPES - Engine specific
 // =============================================================================
 
 /** Card index 0-51 mapping to standard deck */
 export type CardIndex = number;
 
 /** Card suit derived from index: Math.floor(index / 13) */
-export type Suit = 0 | 1 | 2 | 3; // ♠ ♥ ♦ ♣
+export type SuitIndex = 0 | 1 | 2 | 3; // ♠ ♥ ♦ ♣
 
 /** Card rank derived from index: index % 13 */
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
-export const SUIT_NAMES: Record<Suit, string> = {
+// Legacy constant names for backward compatibility
+export const SUIT_NAMES: Record<SuitIndex, string> = {
     0: '♠',
     1: '♥',
     2: '♦',
     3: '♣',
 };
 
-export const RANK_NAMES: Record<Rank, string> = {
-    0: 'A',
-    1: '2',
-    2: '3',
-    3: '4',
-    4: '5',
-    5: '6',
-    6: '7',
-    7: '8',
-    8: '9',
-    9: '10',
-    10: 'J',
-    11: 'Q',
-    12: 'K',
-};
+// =============================================================================
+// GAME STATE - Engine specific state
+// =============================================================================
 
-// =============================================================================
-// GAME STATE
-// =============================================================================
+import type { HandValue } from '@vyrejack/shared';
 
 export interface EngineGameState {
     phase: GamePhase;
@@ -90,7 +89,7 @@ export interface EngineGameState {
 }
 
 // =============================================================================
-// PLAYER ACTIONS - Matches VyreJackCore player functions
+// PLAYER ACTIONS - Using GameAction from shared
 // =============================================================================
 
 export type PlayerAction = 'hit' | 'stand' | 'double' | 'surrender';
@@ -101,7 +100,7 @@ export interface PlayerActionEvent {
 }
 
 // =============================================================================
-// CARD POSITION
+// CARD POSITION - Animation specific
 // =============================================================================
 
 export interface CardPosition {
@@ -112,7 +111,7 @@ export interface CardPosition {
 }
 
 // =============================================================================
-// CARD ELEMENT
+// CARD ELEMENT - DOM specific
 // =============================================================================
 
 export interface CardElement {
@@ -185,18 +184,3 @@ export interface CardDealtEventData {
     isDealer: boolean;
     isHidden: boolean;
 }
-
-// =============================================================================
-// UTILITY TYPES
-// =============================================================================
-
-/** Result type for calculations */
-export interface HandValue {
-    value: number;
-    isSoft: boolean; // Has ace counted as 11
-    isBust: boolean;
-    isBlackjack: boolean;
-}
-
-/** Game result */
-export type GameResult = 'win' | 'lose' | 'push' | 'blackjack';
