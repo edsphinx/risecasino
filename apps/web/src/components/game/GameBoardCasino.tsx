@@ -24,7 +24,7 @@ import { useVyreCasinoActions } from '@/hooks/useVyreCasinoActions';
 import { useTokenBalance } from '@/hooks/useTokenBalance';
 import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
-import { useAnimationProcessor } from '@/hooks/useAnimationProcessor';
+import { useAnimationOrchestrator } from '@/hooks/useAnimationOrchestrator';
 import { useGameStore } from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
@@ -73,8 +73,8 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const wallet = useWallet();
   const isActiveTab = useTabFocus();
 
-  // ⚡ Animation processor - runs queue processing (hook called for side effects)
-  useAnimationProcessor();
+  // ⚡ Animation orchestrator - manages staggered card reveals (new unified architecture)
+  useAnimationOrchestrator();
 
   const { resetAnimationState, clearGameCards } = useGameStore();
 
