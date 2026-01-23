@@ -317,6 +317,16 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   // ⚡ DEAL PHASE TRANSITIONS
   // Orchestrate: placeBet → waiting_vrf (shuffle) → dealing (cards arrive) → player_turn
   useEffect(() => {
+    // 🔄 PHASE SYNC: After page reload/HMR, sync phase from game state
+    // This ensures UI shows correct controls when reconnecting to active game
+    if (dealPhase === 'idle' && hasActiveGame && displayPlayerCards.length >= 2) {
+      if (isPlayerTurn) {
+        setDealPhase('player_turn');
+      } else if (!showingResult) {
+        setDealPhase('dealer_turn');
+      }
+    }
+
     // waiting_vrf → dealing: When first card arrives (displayPlayerCards populated)
     if (dealPhase === 'waiting_vrf' && displayPlayerCards.length > 0) {
       setDealPhase('dealing');
