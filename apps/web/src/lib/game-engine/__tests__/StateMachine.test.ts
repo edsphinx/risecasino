@@ -1,7 +1,5 @@
 /**
- * StateMachine Tests (TDD)
- *
- * Tests written BEFORE implementation.
+ * StateMachine Tests - Updated for VyreJackCore alignment
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -57,7 +55,7 @@ describe('StateMachine', () => {
 
         it('tracks hidden dealer card', () => {
             sm.addCard(15, true, false);
-            sm.addCard(25, true, true); // hidden
+            sm.addCard(25, true, true);
             expect(sm.getState().dealerCards).toEqual([15, 25]);
             expect(sm.getState().dealerHiddenCard).toBe(25);
         });
@@ -65,7 +63,6 @@ describe('StateMachine', () => {
         it('only one hidden card at a time', () => {
             sm.addCard(15, true, true);
             sm.addCard(25, true, true);
-            // Second hidden should overwrite
             expect(sm.getState().dealerHiddenCard).toBe(25);
         });
     });
@@ -83,49 +80,64 @@ describe('StateMachine', () => {
         it('does nothing if no hidden card', () => {
             sm.addCard(15, true, false);
             sm.revealHiddenCard();
-            expect(sm.getState().isHiddenRevealed).toBe(true); // No error
+            expect(sm.getState().isHiddenRevealed).toBe(true);
         });
     });
 
-    describe('Phase Transitions', () => {
-        it('transitions idle → dealing', () => {
-            expect(sm.canTransitionTo('dealing')).toBe(true);
-            sm.setPhase('dealing');
-            expect(sm.getPhase()).toBe('dealing');
+    describe('Phase Transitions - VyreJackCore aligned', () => {
+        it('transitions idle → waiting_for_deal', () => {
+            expect(sm.canTransitionTo('waiting_for_deal')).toBe(true);
+            sm.setPhase('waiting_for_deal');
+            expect(sm.getPhase()).toBe('waiting_for_deal');
         });
 
         it('blocks invalid transition idle → player_turn', () => {
             expect(sm.canTransitionTo('player_turn')).toBe(false);
         });
 
-        it('blocks invalid transition idle → result', () => {
-            expect(sm.canTransitionTo('result')).toBe(false);
+        it('blocks invalid transition idle → push', () => {
+            expect(sm.canTransitionTo('push')).toBe(false);
         });
 
-        it('transitions dealing → player_turn', () => {
-            sm.setPhase('dealing');
+        it('transitions waiting_for_deal → player_turn', () => {
+            sm.setPhase('waiting_for_deal');
             expect(sm.canTransitionTo('player_turn')).toBe(true);
             sm.setPhase('player_turn');
             expect(sm.getPhase()).toBe('player_turn');
         });
 
         it('transitions player_turn → dealer_turn', () => {
-            sm.setPhase('dealing');
+            sm.setPhase('waiting_for_deal');
             sm.setPhase('player_turn');
             sm.setPhase('dealer_turn');
             expect(sm.getPhase()).toBe('dealer_turn');
         });
 
-        it('transitions player_turn → result (bust/blackjack)', () => {
-            sm.setPhase('dealing');
+        it('transitions player_turn → waiting_for_hit', () => {
+            sm.setPhase('waiting_for_deal');
             sm.setPhase('player_turn');
-            expect(sm.canTransitionTo('result')).toBe(true);
+            expect(sm.canTransitionTo('waiting_for_hit')).toBe(true);
         });
 
-        it('result → idle (new game)', () => {
-            sm.setPhase('dealing');
+        it('transitions player_turn → waiting_for_double', () => {
+            sm.setPhase('waiting_for_deal');
             sm.setPhase('player_turn');
-            sm.setPhase('result');
+            expect(sm.canTransitionTo('waiting_for_double')).toBe(true);
+        });
+
+        it('transitions dealer_turn → player_win', () => {
+            sm.setPhase('waiting_for_deal');
+            sm.setPhase('player_turn');
+            sm.setPhase('dealer_turn');
+            sm.setPhase('player_win');
+            expect(sm.getPhase()).toBe('player_win');
+        });
+
+        it('player_win → idle (new game)', () => {
+            sm.setPhase('waiting_for_deal');
+            sm.setPhase('player_turn');
+            sm.setPhase('dealer_turn');
+            sm.setPhase('player_win');
             sm.setPhase('idle');
             expect(sm.getPhase()).toBe('idle');
         });
@@ -146,10 +158,10 @@ describe('StateMachine', () => {
             const phases: GamePhase[] = [];
             sm.subscribe((state) => phases.push(state.phase));
 
-            sm.setPhase('dealing');
+            sm.setPhase('waiting_for_deal');
             sm.setPhase('player_turn');
 
-            expect(phases).toEqual(['dealing', 'player_turn']);
+            expect(phases).toEqual(['waiting_for_deal', 'player_turn']);
         });
 
         it('unsubscribes correctly', () => {
@@ -168,7 +180,7 @@ describe('StateMachine', () => {
         it('resets all state', () => {
             sm.addCard(10, false, false);
             sm.addCard(20, true, true);
-            sm.setPhase('dealing');
+            sm.setPhase('waiting_for_deal');
             sm.setPhase('player_turn');
 
             sm.reset();

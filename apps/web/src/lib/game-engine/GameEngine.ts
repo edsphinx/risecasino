@@ -76,11 +76,11 @@ export class GameEngine {
     // =========================================================================
 
     /**
-     * Start a new game - transitions to dealing phase
+     * Start a new game - transitions to waiting_for_deal phase
      */
     startGame(): void {
         if (this.isDestroyed) return;
-        this.stateMachine.setPhase('dealing');
+        this.stateMachine.setPhase('waiting_for_deal');
     }
 
     /**
@@ -105,11 +105,17 @@ export class GameEngine {
     endGame(result: GameResult): void {
         if (this.isDestroyed) return;
 
-        this.stateMachine.setPhase('result');
+        // Map GameResult to GamePhase
+        const resultPhaseMap: Record<GameResult, GamePhase> = {
+            win: 'player_win',
+            lose: 'dealer_win',
+            push: 'push',
+            blackjack: 'player_blackjack',
+        };
+        this.stateMachine.setPhase(resultPhaseMap[result]);
 
         // Trigger result animation
         const playerCards = this.getPlayerCardElements();
-        // TODO: Add dealer card animation for push result
 
         if (result === 'win' || result === 'blackjack') {
             this.animator.animateWin(playerCards);

@@ -1,7 +1,5 @@
 /**
- * GameEngine Tests (TDD)
- *
- * Tests for the main game orchestrator.
+ * GameEngine Tests - Updated for VyreJackCore alignment
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -13,7 +11,6 @@ describe('GameEngine', () => {
     let container: HTMLElement;
 
     beforeEach(() => {
-        // Create test container
         container = document.createElement('div');
         container.id = 'game-engine-test';
         container.innerHTML = `
@@ -48,9 +45,9 @@ describe('GameEngine', () => {
     });
 
     describe('Game Flow - Starting', () => {
-        it('startGame transitions to dealing phase', () => {
+        it('startGame transitions to waiting_for_deal phase', () => {
             engine.startGame();
-            expect(engine.getPhase()).toBe('dealing');
+            expect(engine.getPhase()).toBe('waiting_for_deal');
         });
     });
 
@@ -82,7 +79,7 @@ describe('GameEngine', () => {
     });
 
     describe('Phase Transitions', () => {
-        it('setPlayerTurn transitions from dealing', () => {
+        it('setPlayerTurn transitions from waiting_for_deal', () => {
             engine.startGame();
             engine.setPlayerTurn();
             expect(engine.getPhase()).toBe('player_turn');
@@ -97,11 +94,32 @@ describe('GameEngine', () => {
     });
 
     describe('Game End', () => {
-        it('endGame transitions to result phase', () => {
+        it('endGame with win transitions to player_win phase', () => {
             engine.startGame();
             engine.setPlayerTurn();
             engine.endGame('win');
-            expect(engine.getPhase()).toBe('result');
+            expect(engine.getPhase()).toBe('player_win');
+        });
+
+        it('endGame with lose transitions to dealer_win phase', () => {
+            engine.startGame();
+            engine.setPlayerTurn();
+            engine.endGame('lose');
+            expect(engine.getPhase()).toBe('dealer_win');
+        });
+
+        it('endGame with push transitions to push phase', () => {
+            engine.startGame();
+            engine.setPlayerTurn();
+            engine.endGame('push');
+            expect(engine.getPhase()).toBe('push');
+        });
+
+        it('endGame with blackjack transitions to player_blackjack phase', () => {
+            engine.startGame();
+            engine.setPlayerTurn();
+            engine.endGame('blackjack');
+            expect(engine.getPhase()).toBe('player_blackjack');
         });
 
         it('endGame emits result event', () => {
@@ -149,7 +167,6 @@ describe('GameEngine', () => {
             engine.startGame();
             engine.dealCard(10, false, false);
 
-            // Should not throw
             engine.reset();
             expect(engine.getPhase()).toBe('idle');
         });
@@ -186,7 +203,7 @@ describe('GameEngine', () => {
             engine.setPlayerTurn();
             engine.setDealerTurn();
 
-            expect(phases).toEqual(['dealing', 'player_turn', 'dealer_turn']);
+            expect(phases).toEqual(['waiting_for_deal', 'player_turn', 'dealer_turn']);
         });
     });
 });

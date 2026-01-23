@@ -6,26 +6,37 @@
  */
 
 // =============================================================================
-// GAME PHASE
+// GAME PHASE - Matches VyreJackCore.GameState enum
 // =============================================================================
 
 export type GamePhase =
-    | 'idle'
-    | 'dealing'
-    | 'player_turn'
-    | 'dealer_turn'
-    | 'resolving'
-    | 'result';
+    | 'idle' // No active game
+    | 'waiting_for_deal' // Awaiting initial 4 cards from VRF
+    | 'player_turn' // Player can hit/stand/double/surrender
+    | 'waiting_for_hit' // Awaiting hit card from VRF
+    | 'waiting_for_double' // Awaiting double card from VRF
+    | 'dealer_turn' // Dealer is drawing
+    | 'player_win' // Player won
+    | 'dealer_win' // Dealer won
+    | 'push' // Tie - bet returned
+    | 'player_blackjack'; // Player got natural 21
 
 // Valid phase transitions map
 export const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
-    idle: ['dealing'],
-    dealing: ['player_turn'],
-    player_turn: ['dealer_turn', 'result'], // result if bust/blackjack
-    dealer_turn: ['result'],
-    resolving: ['result'],
-    result: ['idle'],
+    idle: ['waiting_for_deal'],
+    waiting_for_deal: ['player_turn', 'player_blackjack', 'dealer_win', 'push'],
+    player_turn: ['waiting_for_hit', 'waiting_for_double', 'dealer_turn', 'dealer_win'],
+    waiting_for_hit: ['player_turn', 'dealer_win', 'dealer_turn'],
+    waiting_for_double: ['dealer_turn', 'dealer_win'],
+    dealer_turn: ['player_win', 'dealer_win', 'push'],
+    player_win: ['idle'],
+    dealer_win: ['idle'],
+    push: ['idle'],
+    player_blackjack: ['idle'],
 };
+
+// Result phases for determining game outcome
+export const RESULT_PHASES: GamePhase[] = ['player_win', 'dealer_win', 'push', 'player_blackjack'];
 
 // =============================================================================
 // CARD TYPES
