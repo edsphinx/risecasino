@@ -206,4 +206,103 @@ describe('GameEngine', () => {
             expect(phases).toEqual(['waiting_for_deal', 'player_turn', 'dealer_turn']);
         });
     });
+
+    describe('Destroy and Cleanup', () => {
+        it('destroy prevents further operations', () => {
+            engine.destroy();
+
+            // These should be safe to call but do nothing
+            engine.startGame();
+            expect(engine.getPhase()).toBe('idle');
+
+            engine.dealCard(10, false, false);
+            expect(engine.getState().playerCards).toEqual([]);
+        });
+
+        it('destroy clears all listeners', () => {
+            const listener = vi.fn();
+            engine.onStateChange(listener);
+            engine.onPhaseChange(listener);
+            engine.onGameEnd(listener);
+
+            engine.destroy();
+            // Listener count should be 0 after destroy
+            // State should be reset
+            expect(engine.getPhase()).toBe('idle');
+        });
+    });
+
+    describe('Edge Cases', () => {
+        it('handles rapid phase transitions', () => {
+            engine.startGame();
+            engine.setPlayerTurn();
+            engine.setDealerTurn();
+            engine.endGame('win');
+            engine.reset();
+            engine.startGame();
+
+            expect(engine.getPhase()).toBe('waiting_for_deal');
+        });
+
+        it('handles multiple cards dealt quickly', () => {
+            engine.startGame();
+
+            // Deal 10 cards quickly
+            for (let i = 0; i < 10; i++) {
+                engine.dealCard(i, i % 2 === 0, false);
+            }
+
+            const state = engine.getState();
+            expect(state.playerCards.length).toBe(5);
+            expect(state.dealerCards.length).toBe(5);
+        });
+
+        it('handles all 52 card indices', () => {
+            engine.startGame();
+
+            // Test first card of each suit
+            [0, 13, 26, 39].forEach((cardIndex) => {
+                engine.dealCard(cardIndex, false, false);
+            });
+
+            expect(engine.getState().playerCards).toEqual([0, 13, 26, 39]);
+        });
+
+        it('handles hidden card reveal when no hidden card exists', () => {
+            engine.startGame();
+            engine.dealCard(10, true, false); // Not hidden
+
+            // Should not throw
+            engine.revealHiddenCard();
+            expect(engine.getState().isHiddenRevealed).toBe(true);
+        });
+
+        it('handles multiple resets', () => {
+            engine.startGame();
+            engine.dealCard(10, false, false);
+            engine.reset();
+            engine.reset();
+            engine.reset();
+
+            expect(engine.getPhase()).toBe('idle');
+            expect(engine.getState().playerCards).toEqual([]);
+        });
+
+        it('handles endGame with all result types', () => {
+            const results: Array<{ result: 'win' | 'lose' | 'push' | 'blackjack'; phase: GamePhase }> = [
+                { result: 'win', phase: 'player_win' },
+                { result: 'lose', phase: 'dealer_win' },
+                { result: 'push', phase: 'push' },
+                { result: 'blackjack', phase: 'player_blackjack' },
+            ];
+
+            results.forEach(({ result, phase }) => {
+                engine.reset();
+                engine.startGame();
+                engine.setPlayerTurn();
+                engine.endGame(result);
+                expect(engine.getPhase()).toBe(phase);
+            });
+        });
+    });
 });

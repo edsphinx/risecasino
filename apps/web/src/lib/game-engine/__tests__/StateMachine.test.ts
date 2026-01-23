@@ -33,6 +33,18 @@ describe('StateMachine', () => {
         it('hidden is not revealed', () => {
             expect(sm.getState().isHiddenRevealed).toBe(false);
         });
+
+        it('isDoubled starts as false', () => {
+            expect(sm.getState().isDoubled).toBe(false);
+        });
+
+        it('playerHandValue starts as null', () => {
+            expect(sm.getState().playerHandValue).toBeNull();
+        });
+
+        it('dealerHandValue starts as null', () => {
+            expect(sm.getState().dealerHandValue).toBeNull();
+        });
     });
 
     describe('Adding Cards', () => {

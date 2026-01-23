@@ -145,3 +145,93 @@ describe('shouldDealerHit', () => {
         expect(shouldDealerHit(18, true)).toBe(false);
     });
 });
+
+describe('Edge Cases', () => {
+    describe('calculateHandValue extreme cases', () => {
+        it('handles 4 aces (minimum hand with all aces)', () => {
+            // 4 aces = 44 → 14 (all reduced)
+            const result = calculateHandValue([0, 13, 26, 39]);
+            expect(result.value).toBe(14);
+            expect(result.isSoft).toBe(true);
+        });
+
+        it('handles exactly 21 with multiple aces', () => {
+            // A + A + 9 = 21 (11 + 1 + 9)
+            const result = calculateHandValue([0, 13, 8]); // A + A + 9
+            expect(result.value).toBe(21);
+            expect(result.isBust).toBe(false);
+        });
+
+        it('handles maximum possible bust', () => {
+            // K + K + K + K = 40
+            const result = calculateHandValue([12, 25, 38, 51]);
+            expect(result.value).toBe(40);
+            expect(result.isBust).toBe(true);
+        });
+
+        it('handles card index 0 (Ace of Spades)', () => {
+            const result = calculateHandValue([0]);
+            expect(result.value).toBe(11);
+        });
+
+        it('handles card index 51 (King of Clubs)', () => {
+            const result = calculateHandValue([51]);
+            expect(result.value).toBe(10);
+        });
+
+        it('handles soft 20 (A + 9)', () => {
+            const result = calculateHandValue([0, 8]); // A + 9
+            expect(result.value).toBe(20);
+            expect(result.isSoft).toBe(true);
+            expect(result.isBlackjack).toBe(false);
+        });
+
+        it('handles hard 20 (10 + 10)', () => {
+            const result = calculateHandValue([9, 22]); // 10 + 10
+            expect(result.value).toBe(20);
+            expect(result.isSoft).toBe(false);
+        });
+
+        it('handles 7-card Charlie scenario', () => {
+            // 7 small cards without busting
+            const result = calculateHandValue([1, 2, 3, 14, 15, 16, 27]); // 2+3+4+2+3+4+2 = 20
+            expect(result.value).toBe(20);
+            expect(result.isBust).toBe(false);
+        });
+    });
+
+    describe('canDouble edge cases', () => {
+        it('cannot double on single card', () => {
+            expect(canDouble([0], false)).toBe(false);
+        });
+
+        it('cannot double on empty hand', () => {
+            expect(canDouble([], false)).toBe(false);
+        });
+    });
+
+    describe('canSurrender edge cases', () => {
+        it('cannot surrender on single card', () => {
+            expect(canSurrender([0])).toBe(false);
+        });
+
+        it('cannot surrender on empty hand', () => {
+            expect(canSurrender([])).toBe(false);
+        });
+    });
+
+    describe('shouldDealerHit edge cases', () => {
+        it('handles value 0', () => {
+            expect(shouldDealerHit(0, false)).toBe(true);
+        });
+
+        it('handles value 21', () => {
+            expect(shouldDealerHit(21, false)).toBe(false);
+        });
+
+        it('handles soft 21', () => {
+            expect(shouldDealerHit(21, true)).toBe(false);
+        });
+    });
+});
+
