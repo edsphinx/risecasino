@@ -1,5 +1,8 @@
 # GameEngine Module Specifications
 
+> [!CAUTION]
+> **STRICT TYPING RULE**: Never use `any`. All parameters, returns, and variables must be explicitly typed.
+
 ## Directory Structure
 
 ```

@@ -5,6 +5,16 @@
 
 ---
 
+## ⚠️ CRITICAL RULES
+
+> [!CAUTION]
+> **NEVER USE `any` TYPE**  
+> All data must be properly typed with TypeScript interfaces/types.
+> This applies to ALL code: modules, hooks, tests, utilities.
+> If unsure about a type, create a proper interface - never fallback to `any`.
+
+---
+
 ## Overview
 
 Migrating VyreCasino game board to hybrid architecture:
