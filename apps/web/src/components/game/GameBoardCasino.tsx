@@ -568,8 +568,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
           onPlayAgain={(newBet) => {
-            // Clear previous result and start new game with selected bet
+            // 🎯 SSOT: Clear ALL state for new game (same as handlePlaceBet)
             clearLastResult();
+            resetAnimationState();
+            clearGameCards();
+            setDealPhase('waiting_vrf');
             setBetAmount(newBet);
             actions.placeBet(newBet, token);
           }}
