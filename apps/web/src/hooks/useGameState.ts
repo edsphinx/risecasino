@@ -285,6 +285,20 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         setGamePhase('dealing_initial');
       }
 
+      // 🎯 SSOT: Check if this is the hidden card being revealed (duplicate)
+      // Contract emits CardDealt BOTH when dealing hidden card AND when revealing it
+      // We only want to add the card ONCE
+      const currentGameCards = useGameStore.getState().gameCards;
+      const isHiddenCardReveal =
+        event.isDealer && event.faceUp && currentGameCards.dealerHiddenCard === event.card;
+
+      if (isHiddenCardReveal) {
+        logger.log('[GameStateCasino] Skipping duplicate hidden card reveal:', event.card);
+        // Just flip the hidden card, don't add it again
+        flipHiddenCard();
+        return;
+      }
+
       // 🎯 SSOT: Add card and reveal IMMEDIATELY
       // No setTimeout - cards should appear instantly as events arrive
       const isHidden = event.isDealer && !event.faceUp;
@@ -294,7 +308,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       // Legacy: Still accumulate for backwards compatibility during transition
       addCard(event.card, event.isDealer, event.faceUp);
     },
-    [addGameCard, revealNextCard, addCard, setGamePhase]
+    [addGameCard, revealNextCard, addCard, setGamePhase, flipHiddenCard]
   );
 
   // Handle GameResolved event from WebSocket (V6 GamePlayed event)
