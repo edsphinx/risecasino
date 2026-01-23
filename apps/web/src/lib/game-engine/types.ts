@@ -84,6 +84,20 @@ export interface EngineGameState {
     dealerCards: CardIndex[];
     dealerHiddenCard: CardIndex | null;
     isHiddenRevealed: boolean;
+    isDoubled: boolean;
+    playerHandValue: HandValue | null;
+    dealerHandValue: HandValue | null;
+}
+
+// =============================================================================
+// PLAYER ACTIONS - Matches VyreJackCore player functions
+// =============================================================================
+
+export type PlayerAction = 'hit' | 'stand' | 'double' | 'surrender';
+
+export interface PlayerActionEvent {
+    action: PlayerAction;
+    timestamp: number;
 }
 
 // =============================================================================

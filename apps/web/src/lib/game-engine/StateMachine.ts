@@ -25,6 +25,9 @@ function createInitialState(): EngineGameState {
         dealerCards: [],
         dealerHiddenCard: null,
         isHiddenRevealed: false,
+        isDoubled: false,
+        playerHandValue: null,
+        dealerHandValue: null,
     };
 }
 
@@ -54,6 +57,12 @@ export class StateMachine {
             ...this.state,
             playerCards: [...this.state.playerCards],
             dealerCards: [...this.state.dealerCards],
+            playerHandValue: this.state.playerHandValue
+                ? { ...this.state.playerHandValue }
+                : null,
+            dealerHandValue: this.state.dealerHandValue
+                ? { ...this.state.dealerHandValue }
+                : null,
         };
     }
 

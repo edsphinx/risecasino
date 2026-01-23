@@ -8,6 +8,12 @@ export { StateMachine } from './StateMachine';
 export { CardRenderer } from './CardRenderer';
 export { AnimationController } from './AnimationController';
 export { GameEngine } from './GameEngine';
+export {
+    calculateHandValue,
+    canDouble,
+    canSurrender,
+    shouldDealerHit,
+} from './handValue';
 
 export type {
     GamePhase,
