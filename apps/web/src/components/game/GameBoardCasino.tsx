@@ -1,21 +1,14 @@
 /**
  * GameBoardCasino - Container for VyreCasino game
  *
- * 🏗️ ARCHITECTURE: This is a CONTAINER component that:
+ * ARCHITECTURE: This is a CONTAINER component that:
  * - Uses hooks for state management (all business logic in hooks)
  * - Passes state down to PURE UI components
+ * - gamePhase from store is the single source of truth for game flow
  *
- * ⚡ PERFORMANCE:
+ * PERFORMANCE:
  * - NO POLLING for game state (WebSocket events)
- * - Card accumulation from real-time events
- * - Snapshot mechanism preserves cards at game end
- *
- * 🎨 UX FEATURES (v4 - restored from ETH version):
- * - DEGEN result banner with neon colors
- * - Win celebration overlay
- * - Lose shake/flash effects
- * - XP popup on game end
- * - ShareVictory button
+ * - SSOT card display via gameCards + revealedCount
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'preact/hooks';
@@ -25,7 +18,7 @@ import { useTokenBalance } from '@/hooks/useTokenBalance';
 import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
 import { useAnimationOrchestrator } from '@/hooks/useAnimationOrchestrator';
-import { useGameStore } from '@/stores/gameStore';
+import { useGameStore, selectGamePhase } from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
 import { ActionButtons } from './ActionButtons';
@@ -39,8 +32,6 @@ import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
-// 🧪 TEST: Animation system test panel (DELETE AFTER TESTING)
-import { AnimationSystemTest } from './AnimationSystemTest';
 
 interface GameBoardCasinoProps {
   token: `0x${string}`;
@@ -48,7 +39,6 @@ interface GameBoardCasinoProps {
   tokenContext?: 'ETH' | 'CHIP' | 'USDC';
 }
 
-// XP popup state
 interface XPPopupState {
   xp: number;
   key: number;
@@ -58,12 +48,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const [betAmount, setBetAmount] = useState('10');
   const [xpPopup, setXpPopup] = useState<XPPopupState | null>(null);
 
-  // ⚡ DEAL PHASE: Controls sequential card dealing and flip animations
-  // idle → waiting_vrf (shuffle) → dealing (cards arriving) → player_turn → dealer_turn → result
-  type DealPhase = 'idle' | 'waiting_vrf' | 'dealing' | 'player_turn' | 'dealer_turn' | 'result';
-  const [dealPhase, setDealPhase] = useState<DealPhase>('idle');
-
-  // ⚡ DEALER TURN: Control when to show result overlay (after dealer animation completes)
+  // Overlay timing: delay between result arriving and overlay showing (for dealer animation)
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
   // Derive context if not provided
@@ -73,25 +58,26 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const wallet = useWallet();
   const isActiveTab = useTabFocus();
 
-  // ⚡ Animation orchestrator - manages staggered card reveals (new unified architecture)
+  // Animation orchestrator - manages staggered card reveals
   useAnimationOrchestrator();
 
-  const { resetAnimationState, clearGameCards } = useGameStore();
+  // Game phase from store (single source of truth)
+  const gamePhase = useGameStore(selectGamePhase);
+  const { resetAnimationState, clearGameCards, setGamePhase } = useGameStore();
 
-  // 🎯 SSOT: Get raw state for card display
-  // Using primitive/stable selectors to prevent infinite re-renders
+  // SSOT: Get raw state for card display
   const gameCards = useGameStore((s) => s.gameCards);
   const revealedCount = useGameStore((s) => s.revealedCount);
   const isHiddenCardFlipped = useGameStore((s) => s.isHiddenCardFlipped);
 
-  // ⚡ Token balance hook - cached reads with polling
+  // Token balance hook
   const {
     formattedBalance,
     isApproved,
     refresh: refreshBalance,
   } = useTokenBalance(token, wallet.address as `0x${string}` | null);
 
-  // ⚡ Game state hook - WebSocket events + card accumulation + snapshots
+  // Game state hook - WebSocket events + SSOT management
   const {
     game,
     isPlayerTurn,
@@ -100,7 +86,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     lastGameResult,
     clearLastResult,
     refetch: refetchGame,
-    snapshotCards,
   } = useGameState(wallet.address as `0x${string}` | null);
 
   // XP popup when game ends
@@ -132,7 +117,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
       lastGameResult.result === 'blackjack' ? 100 : lastGameResult.result === 'win' ? 50 : 25;
     setTimeout(() => showXPPopup(xpAmount), 500);
 
-    // Save to game history (only if result is defined)
     if (lastGameResult.result) {
       StorageService.addGameToHistory({
         result: lastGameResult.result,
@@ -161,62 +145,59 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const canBet =
     isActiveTab && wallet.isConnected && !actions.isLoading && !hasActiveGame && !showingResult;
 
-  // Wrapped actions that take snapshot before executing
+  // Game actions
   const handlePlaceBet = useCallback(() => {
     clearLastResult();
-    resetAnimationState(); // ⚡ Clear animation queue for new game
-    clearGameCards(); // 🎯 SSOT: Clear IMMEDIATELY to prevent hydration race
-    setDealPhase('waiting_vrf'); // ⚡ Show shuffle animation while VRF pending
-    // 🎯 SSOT: flipping now handled by ssotFlippedIndices
+    resetAnimationState();
+    clearGameCards();
+    setGamePhase('waiting_vrf');
     actions.placeBet(betAmount, token);
-  }, [actions, betAmount, token, clearLastResult, resetAnimationState, clearGameCards]);
+  }, [
+    actions,
+    betAmount,
+    token,
+    clearLastResult,
+    resetAnimationState,
+    clearGameCards,
+    setGamePhase,
+  ]);
 
   const handleHit = useCallback(() => {
-    snapshotCards();
     actions.hit();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleStand = useCallback(() => {
-    snapshotCards();
     actions.stand();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleDouble = useCallback(() => {
-    snapshotCards();
     actions.double();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleSurrender = useCallback(() => {
-    snapshotCards();
     actions.surrender();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleNewGame = useCallback(() => {
     clearLastResult();
-    resetAnimationState(); // ⚡ Clear animation queue for new game
-    clearGameCards(); // 🎯 SSOT: Clear game cards for new game
+    resetAnimationState();
+    clearGameCards();
     refreshBalance();
     refetchGame();
   }, [clearLastResult, resetAnimationState, clearGameCards, refreshBalance, refetchGame]);
 
-  // Determine which cards/values to display
-  // 🎯 SSOT: Compute display cards from raw state (avoids infinite re-renders from .slice())
+  // SSOT: Compute display cards from raw state
   const displayPlayerCards = useMemo(() => {
-    // Result phase: use snapshot
     if (showingResult && lastGameResult) {
       return lastGameResult.playerCards;
     }
-    // Active game: slice gameCards by revealedCount
     return gameCards.playerCards.slice(0, revealedCount.player);
   }, [showingResult, lastGameResult, gameCards.playerCards, revealedCount.player]);
 
-  // 🎯 SSOT: Dealer cards with hidden card logic
   const displayDealerCards = useMemo(() => {
-    // Result phase: use snapshot (all cards visible)
     if (showingResult && lastGameResult) {
       return lastGameResult.dealerCards;
     }
-    // Active game: slice and apply hidden card logic
     const cards = gameCards.dealerCards.slice(0, revealedCount.dealer);
     if (cards.length >= 2 && !isHiddenCardFlipped) {
       return [cards[0], -1, ...cards.slice(2)];
@@ -230,18 +211,14 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     isHiddenCardFlipped,
   ]);
 
-  // 🎯 SSOT: Derive flipped indices from SSOT state
-  // All revealed cards should be face-up (flipped) except dealer's hidden card
+  // SSOT: Derive flipped indices
   const ssotFlippedPlayerIndices = useMemo(() => {
-    // All player cards are face-up
     return Array.from({ length: revealedCount.player }, (_, i) => i);
   }, [revealedCount.player]);
 
   const ssotFlippedDealerIndices = useMemo(() => {
-    // Dealer cards: all flipped except index 1 (hidden card) unless revealed
     const indices: number[] = [];
     for (let i = 0; i < revealedCount.dealer; i++) {
-      // Skip index 1 (hidden card) unless it's been flipped for reveal
       if (i !== 1 || isHiddenCardFlipped) {
         indices.push(i);
       }
@@ -249,12 +226,11 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return indices;
   }, [revealedCount.dealer, isHiddenCardFlipped]);
 
-  // 🎯 SSOT: Calculate player value from displayPlayerCards (not legacy playerValue)
+  // Calculate player value from display cards
   const displayPlayerValue = useMemo(() => {
     if (showingResult && lastGameResult) {
       return lastGameResult.playerValue;
     }
-    // Calculate from SSOT displayPlayerCards
     if (displayPlayerCards.length === 0) return undefined;
 
     let value = 0;
@@ -270,7 +246,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
         value += rank + 1;
       }
     }
-    // Adjust aces
     while (value > 21 && aces > 0) {
       value -= 10;
       aces--;
@@ -278,16 +253,14 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return value;
   }, [showingResult, lastGameResult, displayPlayerCards]);
 
-  // ⚠️ SECURITY: Calculate dealer value only from VISIBLE cards (not -1 placeholder)
+  // Calculate dealer value only from VISIBLE cards (not -1 placeholder)
   const displayDealerValue = useMemo(() => {
     if (showingResult && lastGameResult) {
       return lastGameResult.dealerValue;
     }
-    // Filter out -1 (hidden card placeholder) and calculate from visible only
     const visibleCards = displayDealerCards.filter((c) => c !== -1);
     if (visibleCards.length === 0) return undefined;
 
-    // Calculate Blackjack hand value
     let value = 0;
     let aces = 0;
     for (const card of visibleCards) {
@@ -307,72 +280,32 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     }
     return value;
   }, [showingResult, lastGameResult, displayDealerCards]);
+
   const displayBet = showingResult && lastGameResult ? lastGameResult.bet : game?.bet;
   const displayResult = showingResult && lastGameResult ? lastGameResult.result : null;
 
-  // ⚠️ SECURITY: Hide dealer's second card ALWAYS except when showing final result
-  // Old logic `isPlayerTurn && !showingResult` was exposing during VRF wait
+  // Hide dealer's second card ALWAYS except when showing final result
   const hideSecondCard = !showingResult;
 
-  // ⚡ DEAL PHASE TRANSITIONS
-  // Orchestrate: placeBet → waiting_vrf (shuffle) → dealing (cards arrive) → player_turn
+  // Result overlay timing: delay showing overlay to let dealer animation play
   useEffect(() => {
-    // 🔄 PHASE SYNC: After page reload/HMR, sync phase from game state
-    // This ensures UI shows correct controls when reconnecting to active game
-    if (dealPhase === 'idle' && hasActiveGame && displayPlayerCards.length >= 2) {
-      if (isPlayerTurn) {
-        setDealPhase('player_turn');
-      } else if (!showingResult) {
-        setDealPhase('dealer_turn');
-      }
-    }
-
-    // waiting_vrf → dealing: When first card arrives (displayPlayerCards populated)
-    if (dealPhase === 'waiting_vrf' && displayPlayerCards.length > 0) {
-      setDealPhase('dealing');
-    }
-
-    // dealing → player_turn: When loading completes and cards are dealt
-    if (dealPhase === 'dealing' && !actions.isLoading && displayPlayerCards.length >= 2) {
-      setDealPhase('player_turn');
-    }
-
-    // When isPlayerTurn changes and we're in player_turn phase
-    if (dealPhase === 'player_turn' && !isPlayerTurn && !showingResult) {
-      // Player finished, transition to dealer turn
-      setDealPhase('dealer_turn');
-    }
-
-    // ⚡ DEALER TURN ANIMATION: When result arrives, animate dealer cards first
-    if (showingResult && dealPhase !== 'result' && !showResultOverlay) {
-      setDealPhase('dealer_turn');
-
-      // 🎯 SSOT: Dealer card reveal now handled by isHiddenCardFlipped in SSOT
-      // Just wait for animation time then show result
+    if (showingResult && !showResultOverlay) {
       const dealerCardCount = lastGameResult?.dealerCards.length ?? 2;
       const animationTime = 300 + Math.max(0, dealerCardCount - 2) * 300 + 800;
 
-      setTimeout(() => {
-        setDealPhase('result');
+      const timer = setTimeout(() => {
+        setGamePhase('showing_result');
         setShowResultOverlay(true);
       }, animationTime);
+
+      return () => clearTimeout(timer);
     }
 
-    // Reset to idle when no active game
-    if (!hasActiveGame && !showingResult && dealPhase !== 'idle') {
+    // Reset overlay when result is cleared
+    if (!showingResult && showResultOverlay) {
       setShowResultOverlay(false);
-      setDealPhase('idle');
     }
-  }, [
-    dealPhase,
-    actions.isLoading,
-    isPlayerTurn,
-    showingResult,
-    hasActiveGame,
-    showResultOverlay,
-    lastGameResult,
-    displayPlayerCards.length,
-  ]);
+  }, [showingResult, showResultOverlay, lastGameResult, setGamePhase]);
 
   // Format bet for display
   const formatBetDisplay = (bet: bigint | undefined) => {
@@ -380,6 +313,12 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     const decimals = tokenSymbol === 'USDC' ? 6 : 18;
     return (Number(bet) / 10 ** decimals).toFixed(decimals === 6 ? 2 : 0);
   };
+
+  // Is waiting for dealer (not player's turn, game active but not showing result yet)
+  const isWaitingDealer =
+    gamePhase === 'dealer_reveal' ||
+    gamePhase === 'dealer_hitting' ||
+    (hasActiveGame && !isPlayerTurn && !showingResult);
 
   return (
     <div className="game-board-mobile bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
@@ -441,7 +380,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                       <span className="play-zone-empty">Deal to start</span>
                     )}
                   </div>
-                  {/* Animated value display with colors */}
                   <HandValue
                     value={displayDealerCards.length > 0 ? displayDealerValue : undefined}
                     cardCount={displayDealerCards.length}
@@ -468,7 +406,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                       <span className="play-zone-empty">Your cards</span>
                     )}
                   </div>
-                  {/* Animated value display with colors */}
                   <HandValue
                     value={displayPlayerCards.length > 0 ? displayPlayerValue : undefined}
                     cardCount={displayPlayerCards.length}
@@ -489,7 +426,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                 </span>
               </div>
 
-              {/* XP Gain Popup - stays on table */}
+              {/* XP Gain Popup */}
               {xpPopup && (
                 <XPGainPopup key={xpPopup.key} xpAmount={xpPopup.xp} onComplete={hideXPPopup} />
               )}
@@ -504,7 +441,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             <div className="controls-panel">
               {wallet.isConnected ? (
                 showingResult ? (
-                  // Show "New Game" button after result
                   <div className="space-y-4">
                     <button onClick={handleNewGame} className="deal-btn w-full">
                       <span className="deal-btn-content">
@@ -523,7 +459,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     canSurrender={game?.playerCards.length === 2}
                     isLoading={actions.isLoading}
                   />
-                ) : hasActiveGame || dealPhase === 'dealer_turn' || dealPhase === 'result' ? (
+                ) : isWaitingDealer ? (
                   <div className="text-center py-4">
                     <p className="text-yellow-400 animate-pulse">⏳ Waiting for dealer...</p>
                   </div>
@@ -549,7 +485,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
               )}
             </div>
 
-            {/* Desktop History - full details panel */}
+            {/* Desktop History */}
             <div className="hidden md:block">{wallet.isConnected && <GameHistory />}</div>
           </div>
 
@@ -560,12 +496,12 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             </div>
           )}
 
-          {/* Mobile History - shows last 3 game results (hidden on desktop) */}
+          {/* Mobile History */}
           <div className="md:hidden">{wallet.isConnected && <MobileHistory />}</div>
         </div>
       </main>
 
-      {/* Full-screen result overlay - only show after dealer animation completes */}
+      {/* Full-screen result overlay - shows after dealer animation */}
       {showResultOverlay && lastGameResult && displayResult && (
         <GameResultOverlay
           result={displayResult}
@@ -578,20 +514,16 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
           onPlayAgain={(newBet) => {
-            // 🎯 SSOT: Clear ALL state for new game (same as handlePlaceBet)
             clearLastResult();
             resetAnimationState();
             clearGameCards();
-            setDealPhase('waiting_vrf');
+            setGamePhase('waiting_vrf');
             setBetAmount(newBet);
             actions.placeBet(newBet, token);
           }}
           onChangeBet={handleNewGame}
         />
       )}
-
-      {/* 🧪 TEST: Animation System Test Panel - DELETE AFTER TESTING */}
-      <AnimationSystemTest />
     </div>
   );
 }
