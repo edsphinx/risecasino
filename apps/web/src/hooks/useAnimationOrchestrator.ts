@@ -95,31 +95,34 @@ export function useAnimationOrchestrator() {
         const hasMore = revealNext();
 
         if (!hasMore && revealTimerRef.current) {
-          // Clear interval BEFORE phase transition to prevent effect re-run race
           clearInterval(revealTimerRef.current);
           revealTimerRef.current = null;
-          logger.log('[Orchestrator] All cards revealed');
-
-          // Defer phase transition to next microtask so the interval cleanup
-          // completes before the Zustand update triggers a re-render
-          queueMicrotask(() => {
-            const currentPhase = useGameStore.getState().gamePhase;
-            if (currentPhase === 'dealing_initial' || currentPhase === 'waiting_vrf') {
-              setGamePhase('player_turn');
-            }
-          });
+          logger.log('[Orchestrator] All cards revealed (interval)');
         }
       }, CARD_REVEAL_INTERVAL);
     }
 
-    // Cleanup timer when component unmounts
+    // Completion detection: when all cards are revealed and we're still in
+    // a dealing phase, transition to player_turn. This runs as an effect
+    // (not inside the interval) because the useEffect cleanup kills the
+    // interval when totalPending drops to 0, preventing the interval from
+    // ever detecting completion itself.
+    if (totalPending === 0 && gameCards.playerCards.length >= 2) {
+      const currentPhase = useGameStore.getState().gamePhase;
+      if (currentPhase === 'dealing_initial' || currentPhase === 'waiting_vrf') {
+        logger.log('[Orchestrator] All cards revealed — transitioning to player_turn');
+        setGamePhase('player_turn');
+      }
+    }
+
+    // Cleanup timer when component unmounts or totalPending changes
     return () => {
       if (revealTimerRef.current) {
         clearInterval(revealTimerRef.current);
         revealTimerRef.current = null;
       }
     };
-  }, [totalPending, revealNext, setGamePhase]);
+  }, [totalPending, revealNext, setGamePhase, gameCards.playerCards.length]);
 
   // Clear timer when game resets
   useEffect(() => {
