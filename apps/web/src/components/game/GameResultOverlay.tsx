@@ -19,6 +19,7 @@ interface GameResultOverlayProps {
   tokenSymbol: string;
   streak?: number;
   xpEarned?: number;
+  quickBets?: string[];
   onPlayAgain: (bet: string) => void;
   onChangeBet: () => void;
 }
@@ -66,6 +67,7 @@ export function GameResultOverlay({
   tokenSymbol,
   streak = 0,
   xpEarned = 0,
+  quickBets: quickBetsProp,
   onPlayAgain,
   onChangeBet,
 }: GameResultOverlayProps) {
@@ -140,8 +142,7 @@ export function GameResultOverlay({
 
   const nearMissMessage = getNearMissMessage();
 
-  // Quick bet options - minimum is 1 USDC per contract
-  const quickBets = ['1', '2', '5', '10'];
+  const quickBets = quickBetsProp ?? ['1', '2', '5', '10'];
 
   return (
     <div className={`result-overlay ${isVisible ? 'visible' : ''}`}>

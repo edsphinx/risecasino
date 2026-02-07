@@ -2,13 +2,36 @@
  * Hooks Index - Export all hooks
  */
 
-// Specialized hooks
+// Wallet hooks
 export { useWalletConnection, type UseWalletConnectionReturn } from './useWalletConnection';
 export { useSessionKey, type UseSessionKeyReturn } from './useSessionKey';
-export { useContractState, type UseContractStateReturn } from './useContractState';
-export { useGameActions, type UseGameActionsReturn } from './useGameActions';
-export { useEventLogger } from './useEventLogger';
-
-// Compositor hooks (recommended for components)
 export { useRiseWallet } from './useRiseWallet';
-export { useGameState, type UseGameStateReturn } from './useGameState';
+
+// Game state hooks
+export { useGameState, type UseGameStateCasinoReturn } from './useGameState';
+export { useGameEvents } from './useGameEvents';
+export { useGameService, type UseGameServiceCasinoReturn } from './useGameService';
+export { useGameWarmup } from './useGameWarmup';
+export { useGameNavigation } from './useGameNavigation';
+
+// Game action hooks
+export { useVyreCasinoActions } from './useVyreCasinoActions';
+
+// Game Engine hooks (Phase 2)
+export {
+  useGameEngine,
+  type UseGameEngineReturn,
+  type UseGameEngineOptions,
+} from './useGameEngine';
+
+// Balance hooks
+export { useTokenBalance } from './useTokenBalance';
+export { useChipBalance } from './useChipBalance';
+export { useAssetBalances } from './useAssetBalances';
+
+// Utility hooks
+export { useFaucet } from './useFaucet';
+export { useEventLogger } from './useEventLogger';
+export { useLiveWins } from './useLiveWins';
+export { useLeaderboardSubscription } from './useLeaderboardSubscription';
+export { useTabFocus } from './useTabFocus';

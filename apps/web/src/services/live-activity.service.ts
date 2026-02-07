@@ -1,25 +1,20 @@
 /**
  * Live Activity Service
  *
- * Subscribes to ALL GameEnded events via Shreds WebSocket
+ * Subscribes to ALL GamePlayed events via Shreds WebSocket
  * for real-time activity ticker on homepage.
+ *
+ * V8: Updated to use VyreJackCore and GamePlayed event
  */
 
-import { createPublicClient, webSocket, formatEther, type Log } from 'viem';
+import { createPublicClient, webSocket, type Log } from 'viem';
 import { shredActions } from 'shreds/viem';
-import { riseTestnet, VYREJACK_ABI, VYREJACK_ADDRESS } from '@/lib/contract';
+import { riseTestnet, VYREJACKCORE_ADDRESS } from '@/lib/contract';
+import { VYREJACKCORE_ABI } from '@vyrejack/shared';
 import { logger } from '@/lib/logger';
 import type { GameResult } from '@vyrejack/shared';
 
 const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
-
-// Game state enum mapping from contract
-const GameStateToResult: Record<number, GameResult> = {
-  5: 'win',
-  6: 'lose',
-  7: 'push',
-  8: 'blackjack',
-};
 
 export interface LiveWinEvent {
   address: string;
@@ -59,7 +54,7 @@ function initClient() {
 }
 
 /**
- * Start watching for all GameEnded events
+ * Start watching for all GamePlayed events (V8)
  */
 function startWatching() {
   if (unwatch) return; // Already watching
@@ -68,28 +63,44 @@ function startWatching() {
   if (!client) return;
 
   try {
+    // V8: Watch GamePlayed event (emitted by VyreJackCore)
     unwatch = (client as any).watchContractEvent({
-      address: VYREJACK_ADDRESS,
-      abi: VYREJACK_ABI,
-      eventName: 'GameEnded',
+      address: VYREJACKCORE_ADDRESS,
+      abi: VYREJACKCORE_ABI,
+      eventName: 'GamePlayed',
       onLogs: (logs: Log[]) => {
         for (const log of logs) {
           try {
+            // GamePlayed event: (player, token, bet, won, payout)
             const eventLog = log as unknown as {
               args: {
                 player: `0x${string}`;
-                result: number;
+                token: `0x${string}`;
+                bet: bigint;
+                won: boolean;
                 payout: bigint;
               };
             };
             const args = eventLog.args;
-            const result = GameStateToResult[args.result];
+
+            // Determine result from won flag and payout
+            let result: GameResult = 'lose';
+            if (args.won) {
+              // Blackjack pays 3:2, so payout > bet * 2 indicates blackjack
+              result = args.payout > args.bet * 2n ? 'blackjack' : 'win';
+            } else if (args.payout === args.bet) {
+              result = 'push';
+            }
 
             // Only show wins (not losses/pushes)
-            if (result && (result === 'win' || result === 'blackjack')) {
+            if (result === 'win' || result === 'blackjack') {
+              // Format amount based on token decimals (USDC = 6, CHIP = 18)
+              // For simplicity, assume USDC (6 decimals) for display
+              const amount = Number(args.payout) / 1e6;
+
               const win: LiveWinEvent = {
                 address: `${args.player.slice(0, 6)}...${args.player.slice(-4)}`,
-                amount: parseFloat(formatEther(args.payout)),
+                amount,
                 game: 'VyreJack',
                 result,
                 timestamp: Date.now(),
@@ -122,7 +133,7 @@ function startWatching() {
       },
     });
 
-    logger.log('[LiveActivity] Started watching GameEnded events');
+    logger.log('[LiveActivity] Started watching GamePlayed events (V8)');
   } catch (error) {
     logger.error('[LiveActivity] Failed to start watching:', error);
   }

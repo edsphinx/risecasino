@@ -447,11 +447,20 @@ contract VyreJackCommitRevealTest is Test {
     ) public {
         numPlayers = uint8(bound(numPlayers, 1, 10));
 
+        // Track timestamp/block manually to avoid via_ir optimizer caching
+        // block.timestamp and block.number across loop iterations.
+        // Foundry cheatcodes (vm.warp/vm.roll) mutate block-level state mid-tx,
+        // but the Yul optimizer may cache these opcodes since they normally
+        // cannot change within a single transaction.
+        uint256 ts = block.timestamp;
+        uint256 bn = block.number;
+
         for (uint8 i = 0; i < numPlayers; i++) {
             address player = address(uint160(100 + i));
 
             casino.playGame(player, chipToken, 100e18);
-            vm.warp(block.timestamp + 16);
+            ts += 16;
+            vm.warp(ts);
 
             bytes32 secret = keccak256(abi.encodePacked("secret", i));
             bytes32 commitment = keccak256(abi.encodePacked(secret));
@@ -459,7 +468,8 @@ contract VyreJackCommitRevealTest is Test {
             vm.prank(keeper);
             game.fallbackCommit(player, commitment);
 
-            vm.roll(block.number + 1);
+            bn += 1;
+            vm.roll(bn);
 
             vm.prank(keeper);
             game.fallbackReveal(player, secret);

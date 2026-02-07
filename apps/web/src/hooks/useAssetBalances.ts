@@ -35,8 +35,6 @@ export interface UseAssetBalancesReturn {
   refresh: () => Promise<void>;
 }
 
-const POLL_INTERVAL = 60000; // 60s safety net (not aggressive)
-
 export function useAssetBalances(account: `0x${string}` | null): UseAssetBalancesReturn {
   const [assets, setAssets] = useState<AssetInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,26 +86,15 @@ export function useAssetBalances(account: `0x${string}` | null): UseAssetBalance
     fetchAssets();
   }, [fetchAssets]);
 
-  // ⚡ OPTIMIZATION: Poll only when tab is active (same as useTokenBalance)
+  // ⚡ REMOVED: Polling and game event listeners are now handled
+  // centrally in balanceStore. This hook only provides the UI interface.
+
+  // Refresh when tab becomes active
   useEffect(() => {
-    if (!isActiveTab || !account) {
-      return;
+    if (isActiveTab && account) {
+      fetchAssets();
     }
-
-    const interval = setInterval(fetchAssets, POLL_INTERVAL);
-    return () => clearInterval(interval);
   }, [isActiveTab, account, fetchAssets]);
-
-  // Listen for game resolved events for immediate refresh
-  useEffect(() => {
-    const handleGameResolved = () => {
-      // Small delay to allow blockchain state to update
-      setTimeout(() => fetchAssets(), 1000);
-    };
-
-    window.addEventListener('vyrejack:gameResolved', handleGameResolved);
-    return () => window.removeEventListener('vyrejack:gameResolved', handleGameResolved);
-  }, [fetchAssets]);
 
   return {
     assets,

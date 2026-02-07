@@ -40,4 +40,5 @@ export {
     animateCardHoverOut,
     animateWinningHand,
     animateLosingHand,
+    registerDeckElement,
 } from './card-animations';

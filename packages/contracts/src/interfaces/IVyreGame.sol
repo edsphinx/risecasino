@@ -2,25 +2,19 @@
 pragma solidity ^0.8.28;
 
 /* --------------------------------------------------------------------------
- * IVYREGAME — STANDARD INTERFACE FOR ALL CASINO GAMES
+ * IVYREGAME — STANDARD INTERFACE FOR ALL CASINO GAMES V4
  * -------------------------------------------------------------------------
  * All games registered with VyreCasino must implement this interface.
  *
  * - play(): Called by VyreCasino to execute game logic
  * - BetInfo: Standardized bet structure with token, amount, and visual tier
  * - GameResult: Standardized result with win status and payout amount
- * ------------------------------------------------------------------------*/
-
-/**
- * @title  IVyreGame
+ *
  * @author edsphinx
  * @custom:company Blocketh
- * @notice Standard interface for all Vyre Casino games.
- * @dev    Games implementing this interface can be registered with VyreCasino
- *         and will receive routed bets from players. The game is responsible
- *         only for pure game logic - all financial handling (house edge,
- *         referrals, payouts) is managed by VyreCasino.
- */
+ * @custom:version 4.0.0
+ * ------------------------------------------------------------------------*/
+
 interface IVyreGame {
     // ==================== STRUCTS ====================
 
@@ -40,43 +34,31 @@ interface IVyreGame {
 
     // ==================== FUNCTIONS ====================
 
-    /**
-     * @notice Start a game for a player
-     * @param player The player address
-     * @param bet Bet information (token, amount, tier)
-     * @param gameData Game-specific parameters
-     * @return result The game result
-     */
+    /// @notice Start a game for a player
+    /// @param player The player address
+    /// @param bet Bet information (token, amount, tier)
+    /// @param gameData Game-specific parameters
+    /// @return result The game result
     function play(
         address player,
         BetInfo calldata bet,
         bytes calldata gameData
     ) external returns (GameResult memory result);
 
-    /**
-     * @notice Get game name
-     */
+    /// @notice Get game name
     function name() external view returns (string memory);
 
-    /**
-     * @notice Get minimum bet for a token
-     * @param token Token address
-     */
+    /// @notice Get minimum bet for a token
     function minBet(
         address token
     ) external view returns (uint256);
 
-    /**
-     * @notice Get maximum bet for a token
-     * @param token Token address
-     */
+    /// @notice Get maximum bet for a token
     function maxBet(
         address token
     ) external view returns (uint256);
 
-    /**
-     * @notice Check if game is active
-     */
+    /// @notice Check if game is active
     function isActive() external view returns (bool);
 
     // ==================== EVENTS ====================

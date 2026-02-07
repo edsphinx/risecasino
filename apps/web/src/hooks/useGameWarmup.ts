@@ -46,7 +46,7 @@ export function useGameWarmup(userAddress: `0x${string}` | null): WarmupState {
 
         // 2. Preload session key manager (dynamic import)
         logger.log('[Warmup] 2/4 Loading session key manager...');
-        await import('@/services/sessionKeyManager');
+        await import('@/services/sessionKey.service');
 
         // 3. Get provider ready (creates RiseWallet singleton)
         logger.log('[Warmup] 3/4 Initializing provider...');

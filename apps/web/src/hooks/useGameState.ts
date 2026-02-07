@@ -1,302 +1,465 @@
 /**
- * useGameState - Compositor hook for game state and actions
+ * useGameState - Compositor hook for VyreJackCore game state
  *
- * Implements hybrid card tracking:
- * 1. Accumulates CardDealt events for smooth display
- * 2. Takes snapshot before actions as fallback
- * 3. Preserves cards at game end for result display
+ * Combines:
+ * - Read-only game state from useGameService (NO POLLING)
+ * - WebSocket events from useGameEvents (real-time updates)
+ * - SSOT card management via gameStore
+ *
+ * ARCHITECTURE:
+ * - SSOT gameCards is the ONLY card source (no fallback layers)
+ * - CardDealt events populate gameCards + trigger reveal
+ * - GameResolved event builds HandSnapshot from SSOT
+ * - useAnimationOrchestrator handles staggered reveal timing
+ *
+ * PERFORMANCE:
+ * - NO POLLING - WebSocket events trigger state updates
+ * - Instant card display via SSOT + revealedCount
  */
 
-import { useState, useCallback, useRef } from 'preact/hooks';
-import { useContractState } from './useContractState';
-import { useGameActions, type GameEndData } from './useGameActions';
-import { useGameEvents, type GameEndEvent, type CardDealtEvent } from './useGameEvents';
+import { useCallback, useRef, useMemo, useEffect } from 'preact/hooks';
+import { useGameService } from './useGameService';
+import {
+  useGameStore,
+  selectLastGameResult,
+  selectShowingResult,
+  selectGamePhase,
+} from '@/stores/gameStore';
+import { useGameEvents, type GameResolvedEvent, type CardDealtEvent } from './useGameEvents';
 import { logger } from '@/lib/logger';
-import type { UseRiseWalletReturn } from '@vyrejack/shared';
-import type { GameData, HandValue, BetLimits, GameResult } from '@vyrejack/shared';
+import type { VyreJackGame, GameResult } from '@vyrejack/shared';
 
-// Card accumulator for smooth display
-interface CardAccumulator {
-  playerCards: number[];
-  dealerCards: number[];
-  dealerHiddenCard: number | null; // Second card, revealed at end
-}
+// =============================================================================
+// TYPES
+// =============================================================================
 
-export interface UseGameStateReturn {
-  // State
-  gameData: GameData | null;
-  playerValue: HandValue | null;
-  dealerValue: number | null;
-  betLimits: BetLimits;
+// VyreJackGameState enum values (from VyreJackCore.sol)
+const IDLE = 0;
+const WAITING_VRF = 1; // WaitingForDeal
+const PLAYER_TURN = 2;
+const WAITING_HIT_VRF = 3;
+const WAITING_DOUBLE_VRF = 4;
+const DEALER_TURN = 5;
+// Final states
+const PLAYER_WIN = 6;
+const DEALER_WIN = 7;
+const PUSH = 8;
+const PLAYER_BLACKJACK = 9;
+
+// Suppress unused variable warning
+void DEALER_TURN;
+
+export interface UseGameStateCasinoReturn {
+  // Game state
+  game: VyreJackGame | null;
   isFetching: boolean;
 
-  // Card accumulator for display (from CardDealt events)
-  accumulatedCards: CardAccumulator;
-
-  // Last game result with final hand values and cards
+  // Last game result
   lastGameResult: {
-    result: GameResult;
-    payout: bigint;
-    playerFinalValue: number;
-    dealerFinalValue: number;
     playerCards: number[];
     dealerCards: number[];
+    playerValue: number;
+    dealerValue: number;
+    bet: bigint;
+    result: GameResult;
+    payout: bigint;
   } | null;
   clearLastResult: () => void;
 
   // WebSocket status
   isEventConnected: boolean;
 
-  // Actions
-  isLoading: boolean;
-  error: string | null;
-  placeBet: (betAmount: string) => Promise<boolean>;
-  hit: () => Promise<boolean>;
-  stand: () => Promise<boolean>;
-  double: () => Promise<boolean>;
-  surrender: () => Promise<boolean>;
-  cancelTimedOutGame: () => Promise<boolean>;
+  // Derived state
+  hasActiveGame: boolean;
+  isPlayerTurn: boolean;
+  isWaitingVRF: boolean;
+  isGameEnded: boolean;
+  showingResult: boolean;
 
-  // Utils
-  fetchGameState: () => Promise<void>;
-  formatBet: (value: bigint) => string;
-  snapshotCards: () => void; // Take snapshot before actions
+  // Actions
+  refetch: () => Promise<void>;
 }
 
-export function useGameState(wallet: UseRiseWalletReturn): UseGameStateReturn {
-  const state = useContractState(wallet.address);
-  const [lastGameResult, setLastGameResult] = useState<UseGameStateReturn['lastGameResult']>(null);
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
-  // Card accumulator - tracks cards from CardDealt events
-  const [accumulatedCards, setAccumulatedCards] = useState<CardAccumulator>({
-    playerCards: [],
-    dealerCards: [],
-    dealerHiddenCard: null,
-  });
+function isFinalState(state: number | undefined): boolean {
+  return (
+    state === PLAYER_WIN || state === DEALER_WIN || state === PUSH || state === PLAYER_BLACKJACK
+  );
+}
 
-  // Snapshot ref - backup of cards before action
-  const cardSnapshotRef = useRef<CardAccumulator | null>(null);
+/**
+ * Calculate blackjack hand value from card indices
+ * Card index format: 0-51 where (index % 13) gives rank (0=Ace, 1=2, ..., 12=King)
+ */
+function calculateLocalHandValue(cards: number[]): number {
+  if (!cards || cards.length === 0) return 0;
 
-  // Take snapshot of current cards (call before actions)
-  const snapshotCards = useCallback(() => {
-    // Prefer accumulated cards, fallback to contract state
-    const snapshot: CardAccumulator = {
-      playerCards:
-        accumulatedCards.playerCards.length > 0
-          ? [...accumulatedCards.playerCards]
-          : [...(state.gameData?.playerCards ?? [])],
-      dealerCards:
-        accumulatedCards.dealerCards.length > 0
-          ? [...accumulatedCards.dealerCards]
-          : [...(state.gameData?.dealerCards ?? [])],
-      dealerHiddenCard: accumulatedCards.dealerHiddenCard,
+  let value = 0;
+  let aces = 0;
+
+  for (const card of cards) {
+    const rank = card % 13;
+
+    if (rank === 0) {
+      aces++;
+      value += 11;
+    } else if (rank >= 10) {
+      value += 10;
+    } else {
+      value += rank + 1;
+    }
+  }
+
+  while (value > 21 && aces > 0) {
+    value -= 10;
+    aces--;
+  }
+
+  return value;
+}
+
+// =============================================================================
+// HOOK
+// =============================================================================
+
+export function useGameState(player: `0x${string}` | null): UseGameStateCasinoReturn {
+  // Read-only game state (NO POLLING)
+  const service = useGameService(player);
+
+  // ZUSTAND: Use global store for persistent game results
+  const lastGameResult = useGameStore(selectLastGameResult);
+  const showingResult = useGameStore(selectShowingResult);
+  const {
+    clearLastResult: storeClearResult,
+    setGamePhase,
+    setLastGameResult,
+    // SSOT actions
+    addGameCard,
+    flipHiddenCard,
+    hydrateFromContract,
+  } = useGameStore();
+
+  // Subscribe to gamePhase for safety-net refetch logic
+  const gamePhase = useGameStore(selectGamePhase);
+
+  const serviceRef = useRef(service);
+  serviceRef.current = service;
+
+  // Track pending timeouts for cleanup on unmount
+  const resolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // SSOT: Hydrate gameCards from contract state on mount/game change
+  // This ensures SSOT is synced when page reloads with active game
+  const lastHydratedGameRef = useRef<string | null>(null);
+  const hasHydratedThisSession = useRef(false);
+
+  useEffect(() => {
+    const game = service.game;
+    const currentPhase = useGameStore.getState().gamePhase;
+    const ssotCards = useGameStore.getState().gameCards;
+
+    // CASE A: Game vanished on-chain while frontend was in an active phase.
+    // This happens when game resolved (bust/win) but we missed the GameResolved event.
+    // Contract deletes the game struct, so refetch returns empty.
+    if (!game || game.playerCards.length === 0) {
+      if (currentPhase === 'waiting_vrf' && ssotCards.playerCards.length > 0) {
+        logger.log('[HYDRATION] Game vanished on-chain during waiting_vrf — resetting to idle');
+        useGameStore.getState().resetAnimationState();
+        useGameStore.getState().clearGameCards();
+      }
+      lastHydratedGameRef.current = null;
+      hasHydratedThisSession.current = false;
+      return;
+    }
+
+    // Dedup: skip if we already hydrated this exact card set
+    const gameKey = `${game.playerCards.join(',')}-${game.dealerCards.join(',')}`;
+    if (lastHydratedGameRef.current === gameKey) return;
+
+    // Only hydrate from idle (page reload) or waiting_vrf (missed WebSocket events)
+    if (currentPhase !== 'idle' && currentPhase !== 'waiting_vrf') {
+      return;
+    }
+
+    const contractHasCards = game.playerCards.length > 0;
+    const ssotPlayerCount = ssotCards.playerCards.length;
+
+    // CASE B (idle): Page reload — only hydrate if SSOT is empty
+    // CASE C (waiting_vrf): Missed events — hydrate if SSOT empty OR contract has more cards (HIT)
+    const needsHydration =
+      currentPhase === 'idle'
+        ? contractHasCards && ssotPlayerCount === 0 && !hasHydratedThisSession.current
+        : contractHasCards && (ssotPlayerCount === 0 || game.playerCards.length > ssotPlayerCount);
+
+    if (!needsHydration) return;
+
+    const gameState = game.state;
+    const isGameActive = gameState !== IDLE && gameState !== undefined && !isFinalState(gameState);
+    if (!isGameActive) {
+      logger.log('[HYDRATION] Skipping - game not active, state:', gameState);
+      return;
+    }
+
+    // Derive correct gamePhase from contract state
+    let hydratedPhase: 'player_turn' | 'waiting_vrf' | 'dealer_reveal';
+    if (gameState === PLAYER_TURN) {
+      hydratedPhase = 'player_turn';
+    } else if (
+      gameState === WAITING_VRF ||
+      gameState === WAITING_HIT_VRF ||
+      gameState === WAITING_DOUBLE_VRF
+    ) {
+      hydratedPhase = 'waiting_vrf';
+    } else {
+      hydratedPhase = 'dealer_reveal';
+    }
+
+    logger.log('[HYDRATION] Batch hydrating SSOT from contract:', game, 'phase:', hydratedPhase);
+    hasHydratedThisSession.current = true;
+
+    // Single set() call — no orchestrator thrash
+    hydrateFromContract([...game.playerCards], [...game.dealerCards], hydratedPhase);
+
+    lastHydratedGameRef.current = gameKey;
+  }, [service.game, hydrateFromContract]);
+
+  // Safety net: When waiting_vrf and WebSocket misses events,
+  // schedule delayed refetches to catch VRF fulfillment.
+  // Covers BOTH initial deal (empty SSOT) and HIT (SSOT has cards but contract progressed).
+  // Uses two timers: 3s for fast VRF, 8s for slow VRF (Rise testnet can take >2min).
+  useEffect(() => {
+    if (gamePhase !== 'waiting_vrf') return;
+
+    const refetchIfStillWaiting = (label: string) => {
+      const currentPhase = useGameStore.getState().gamePhase;
+      if (currentPhase !== 'waiting_vrf') return;
+      logger.log(`[GameStateCasino] VRF safety net (${label}): refetching`);
+      serviceRef.current.refetch();
     };
-    cardSnapshotRef.current = snapshot;
-    logger.log('[GameState] Cards snapshot taken:', snapshot);
-  }, [accumulatedCards, state.gameData]);
 
-  // Handle CardDealt event - accumulate cards
+    const timer1 = setTimeout(() => refetchIfStillWaiting('3s'), 3000);
+    const timer2 = setTimeout(() => refetchIfStillWaiting('8s'), 8000);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [gamePhase]);
+
+  // Handle CardDealt event - populate SSOT
   const handleCardDealt = useCallback(
     (event: CardDealtEvent) => {
-      logger.log('[GameState] CardDealt:', event);
+      logger.log('[GameStateCasino] CardDealt:', event);
 
-      setAccumulatedCards((prev) => {
-        if (event.isDealer) {
-          // Dealer card
-          if (!event.faceUp && prev.dealerCards.length === 1) {
-            // This is the hidden second card
-            return { ...prev, dealerHiddenCard: event.card };
-          }
-          return { ...prev, dealerCards: [...prev.dealerCards, event.card] };
-        } else {
-          // Player card
-          return { ...prev, playerCards: [...prev.playerCards, event.card] };
-        }
-      });
+      const currentGameCards = useGameStore.getState().gameCards;
+      const currentPhase = useGameStore.getState().gamePhase;
 
-      // Also refetch contract state
-      state.refetch();
+      // DEDUP: Skip if SSOT was already populated by hydration.
+      // When VRF responds same-block, refetch → hydration fills SSOT before
+      // WebSocket events arrive. These late events would create duplicates.
+      const targetCards = event.isDealer
+        ? currentGameCards.dealerCards
+        : currentGameCards.playerCards;
+      if (
+        currentPhase === 'player_turn' &&
+        targetCards.length >= 2 &&
+        !event.isDealer // Initial deal player cards
+      ) {
+        logger.log(
+          '[GameStateCasino] Skipping stale CardDealt (SSOT already hydrated):',
+          event.card
+        );
+        return;
+      }
+      if (
+        currentPhase === 'player_turn' &&
+        targetCards.length >= 2 &&
+        event.isDealer &&
+        !event.faceUp // Initial deal hidden card
+      ) {
+        logger.log(
+          '[GameStateCasino] Skipping stale dealer CardDealt (SSOT already hydrated):',
+          event.card
+        );
+        return;
+      }
+
+      // Phase tracking: transition to dealing_initial on first card
+      if (currentPhase === 'waiting_vrf' || currentPhase === 'idle') {
+        setGamePhase('dealing_initial');
+      }
+
+      // Check if this is the hidden card being revealed (duplicate event)
+      // Contract emits CardDealt BOTH when dealing hidden card AND when revealing it
+      const isHiddenCardReveal =
+        event.isDealer && event.faceUp && currentGameCards.dealerHiddenCard === event.card;
+
+      if (isHiddenCardReveal) {
+        logger.log('[GameStateCasino] Skipping duplicate hidden card reveal:', event.card);
+        flipHiddenCard();
+        return;
+      }
+
+      // Add card to SSOT (orchestrator handles reveal timing + phase transition)
+      const isHidden = event.isDealer && !event.faceUp;
+      addGameCard(event.card, event.isDealer, isHidden);
     },
-    [state.refetch]
+    [addGameCard, setGamePhase, flipHiddenCard]
   );
 
-  // Refs to get latest values in delayed callback
-  const accumulatedCardsRef = useRef(accumulatedCards);
-  accumulatedCardsRef.current = accumulatedCards;
+  // Handle GameResolved event from WebSocket
+  const handleGameResolved = useCallback(
+    (event: GameResolvedEvent) => {
+      logger.log('[GameStateCasino] GameResolved:', event);
 
-  const stateRef = useRef(state);
-  stateRef.current = state;
+      // Clear any pending timers from a previous resolve (shouldn't happen, but guard)
+      if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
 
-  // Handle game end event from WebSocket
-  const handleGameEnd = useCallback(
-    (event: GameEndEvent) => {
-      logger.log('[GameState] Game ended with result:', event);
+      // Set dealer reveal phase
+      setGamePhase('dealer_reveal');
 
-      // Delay 50ms to allow CardDealt events to be processed first
-      // Rise is very fast, events may arrive nearly simultaneously
-      setTimeout(() => {
-        const currentAccumulated = accumulatedCardsRef.current;
-        const currentState = stateRef.current;
-        const currentSnapshot = cardSnapshotRef.current;
+      // Flip the dealer's hidden card face-up
+      flipHiddenCard();
 
-        // Get cards from multiple sources (best available)
-        // Priority: accumulated > snapshot > contract state
-        let playerCards: number[] = [];
-        let dealerCards: number[] = [];
+      // Delay to allow final CardDealt events to arrive
+      // RiseChain has 10ms blocks so events arrive in rapid bursts
+      resolveTimerRef.current = setTimeout(() => {
+        resolveTimerRef.current = null;
 
-        if (currentAccumulated.playerCards.length >= 2) {
-          playerCards = [...currentAccumulated.playerCards];
-          logger.log('[GameState] Using accumulated player cards:', playerCards);
-        } else if (currentSnapshot?.playerCards.length) {
-          playerCards = [...currentSnapshot.playerCards];
-          logger.log('[GameState] Using snapshot player cards:', playerCards);
-        } else if (currentState.gameData?.playerCards?.length) {
-          playerCards = [...currentState.gameData.playerCards];
-          logger.log('[GameState] Using contract player cards:', playerCards);
+        // Guard: if result was already cleared (e.g., user started new game), bail
+        const currentPhase = useGameStore.getState().gamePhase;
+        if (currentPhase === 'idle' || currentPhase === 'betting') {
+          logger.log('[GameStateCasino] Stale resolve timer, phase is:', currentPhase);
+          return;
         }
 
-        if (currentAccumulated.dealerCards.length >= 1) {
-          dealerCards = [...currentAccumulated.dealerCards];
-          // Add hidden card if exists
-          if (
-            currentAccumulated.dealerHiddenCard !== null &&
-            !dealerCards.includes(currentAccumulated.dealerHiddenCard)
-          ) {
-            dealerCards.splice(1, 0, currentAccumulated.dealerHiddenCard);
-          }
-          logger.log('[GameState] Using accumulated dealer cards:', dealerCards);
-        } else if (currentSnapshot?.dealerCards.length) {
-          dealerCards = [...currentSnapshot.dealerCards];
-          if (currentSnapshot.dealerHiddenCard !== null) {
-            dealerCards.splice(1, 0, currentSnapshot.dealerHiddenCard);
-          }
-          logger.log('[GameState] Using snapshot dealer cards:', dealerCards);
-        } else if (currentState.gameData?.dealerCards?.length) {
-          dealerCards = [...currentState.gameData.dealerCards];
-          logger.log('[GameState] Using contract dealer cards:', dealerCards);
+        const currentService = serviceRef.current;
+
+        // Get cards from SSOT (single source)
+        const ssotCards = useGameStore.getState().gameCards;
+        let playerCards = [...ssotCards.playerCards];
+        let dealerCards = [...ssotCards.dealerCards];
+
+        // Fallback to contract only if SSOT is empty (shouldn't happen normally)
+        if (playerCards.length < 2 && currentService.game?.playerCards?.length) {
+          playerCards = [...currentService.game.playerCards];
+          logger.log('[GameStateCasino] SSOT empty, using contract player cards:', playerCards);
+        }
+        if (dealerCards.length < 1 && currentService.game?.dealerCards?.length) {
+          dealerCards = [...currentService.game.dealerCards];
+          logger.log('[GameStateCasino] SSOT empty, using contract dealer cards:', dealerCards);
         }
 
+        // Calculate hand values (event values are 0, so we calculate locally)
+        const playerValue =
+          event.playerFinalValue > 0
+            ? event.playerFinalValue
+            : calculateLocalHandValue(playerCards);
+        const dealerValue =
+          event.dealerFinalValue > 0
+            ? event.dealerFinalValue
+            : calculateLocalHandValue(dealerCards);
+
+        logger.log('[GameStateCasino] Hand values:', {
+          playerValue,
+          dealerValue,
+          result: event.result,
+          payout: event.payout.toString(),
+        });
+
+        // Build hand snapshot and set result
         setLastGameResult({
           result: event.result,
           payout: event.payout,
-          playerFinalValue: event.playerFinalValue,
-          dealerFinalValue: event.dealerFinalValue,
+          playerValue,
+          dealerValue,
           playerCards,
           dealerCards,
+          bet: event.bet,
         });
 
-        // Clear accumulated cards for next game
-        setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
-        cardSnapshotRef.current = null;
-      }, 50); // 50ms delay to allow CardDealt events to arrive
+        // Dispatch global event for wallet balance refresh
+        window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
+
+        // Refetch after overlay has time to display
+        refetchTimerRef.current = setTimeout(() => {
+          refetchTimerRef.current = null;
+          serviceRef.current.refetch();
+        }, 5000);
+      }, 100);
     },
-    [] // No dependencies - we use refs for current values
+    [setGamePhase, flipHiddenCard, setLastGameResult]
   );
 
-  const clearLastResult = useCallback(() => {
-    setLastGameResult(null);
+  // Cleanup pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    };
   }, []);
 
+  const clearLastResult = useCallback(() => {
+    storeClearResult();
+  }, [storeClearResult]);
+
   // WebSocket listener for game events
-  const { isConnected: isEventConnected } = useGameEvents(wallet.address, {
-    onGameEnd: handleGameEnd,
+  const { isConnected: isEventConnected } = useGameEvents(player, {
+    onGameResolved: handleGameResolved,
     onCardDealt: handleCardDealt,
   });
 
-  // Fallback: handle GameEndData from transaction parsing
-  const handleGameEndFromTx = useCallback((data: GameEndData) => {
-    logger.log('[GameState] Game ended from TX (fallback):', data);
+  // BUG-09 FIX: Refetch on WebSocket reconnection to catch missed events
+  const prevConnectedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // Detect reconnection: was previously connected, disconnected, now reconnected
+    if (isEventConnected && prevConnectedRef.current === false && player) {
+      logger.log('[GameStateCasino] WebSocket reconnected, refetching state');
+      serviceRef.current.refetch();
+    }
+    prevConnectedRef.current = isEventConnected;
+  }, [isEventConnected, player]);
 
-    const finalCards = cardSnapshotRef.current ?? {
-      playerCards: [],
-      dealerCards: [],
-      dealerHiddenCard: null,
-    };
+  // Derived state
+  const isGameEnded = useMemo(() => {
+    return isFinalState(service.game?.state);
+  }, [service.game]);
 
-    setLastGameResult({
-      result: data.result,
-      payout: data.payout,
-      playerFinalValue: 0,
-      dealerFinalValue: 0,
-      playerCards: finalCards.playerCards,
-      dealerCards: finalCards.dealerCards,
-    });
+  const hasActiveGame = useMemo(() => {
+    return (
+      service.game !== null && service.game.state !== IDLE && !isFinalState(service.game.state)
+    );
+  }, [service.game]);
 
-    setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
-    cardSnapshotRef.current = null;
-  }, []);
+  const isPlayerTurn = useMemo(() => {
+    return service.game?.state === PLAYER_TURN;
+  }, [service.game]);
 
-  const actions = useGameActions({
-    address: wallet.address,
-    hasSessionKey: wallet.hasSessionKey,
-    keyPair: wallet.keyPair,
-    betLimits: state.betLimits,
-    onSuccess: state.refetch,
-    onGameEnd: handleGameEndFromTx,
-  });
-
-  // Wrap actions to take snapshot before execution
-  const wrappedHit = async (): Promise<boolean> => {
-    snapshotCards();
-    return actions.hit();
-  };
-
-  const wrappedStand = async (): Promise<boolean> => {
-    snapshotCards();
-    return actions.stand();
-  };
-
-  const wrappedDouble = async (): Promise<boolean> => {
-    if (!state.gameData?.bet) return false;
-    snapshotCards();
-    return actions.double(state.gameData.bet);
-  };
-
-  const wrappedSurrender = async (): Promise<boolean> => {
-    snapshotCards();
-    return actions.surrender();
-  };
-
-  // Wrap placeBet to clear previous game state before starting new game
-  const wrappedPlaceBet = async (betAmount: string): Promise<boolean> => {
-    // Clear previous game result and cards
-    setLastGameResult(null);
-    setAccumulatedCards({ playerCards: [], dealerCards: [], dealerHiddenCard: null });
-    cardSnapshotRef.current = null;
-    return actions.placeBet(betAmount);
-  };
+  const isWaitingVRF = useMemo(() => {
+    const state = service.game?.state;
+    return state === WAITING_VRF || state === WAITING_HIT_VRF || state === WAITING_DOUBLE_VRF;
+  }, [service.game]);
 
   return {
-    // State
-    gameData: state.gameData,
-    playerValue: state.playerValue,
-    dealerValue: state.dealerValue,
-    betLimits: state.betLimits,
-    isFetching: state.isFetching,
+    game: service.game,
+    isFetching: service.isFetching,
 
-    // Card accumulator
-    accumulatedCards,
-
-    // Last result with cards
     lastGameResult,
     clearLastResult,
 
-    // WebSocket
     isEventConnected,
 
-    // Actions (wrapped with snapshot)
-    isLoading: actions.isLoading,
-    error: actions.error,
-    placeBet: wrappedPlaceBet,
-    hit: wrappedHit,
-    stand: wrappedStand,
-    double: wrappedDouble,
-    surrender: wrappedSurrender,
-    cancelTimedOutGame: actions.cancelTimedOutGame,
+    hasActiveGame,
+    isPlayerTurn,
+    isWaitingVRF,
+    isGameEnded,
+    showingResult,
 
-    // Utils
-    fetchGameState: state.refetch,
-    formatBet: actions.formatBet,
-    snapshotCards,
+    refetch: service.refetch,
   };
 }

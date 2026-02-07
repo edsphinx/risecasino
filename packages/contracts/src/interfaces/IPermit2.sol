@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/**
- * @title IPermit2
- * @notice Interface for Uniswap's Permit2 contract
- * @dev Pre-deployed on Rise Testnet at 0x000000000022D473030F116dDEE9F6B43aC78BA3
+/* --------------------------------------------------------------------------
+ * IPERMIT2 — UNISWAP PERMIT2 INTERFACE V4
+ * -------------------------------------------------------------------------
+ * Interface for Uniswap's Permit2 contract for gasless token approvals.
  *
- * Permit2 enables gasless token approvals via signed messages.
- * Users sign a permit off-chain, and contracts can pull tokens using that signature.
- */
+ * - Gasless Approvals: Users sign permits off-chain
+ * - Single Transaction: Approve + transfer in one call
+ * - Pre-deployed: Rise Testnet 0x000000000022D473030F116dDEE9F6B43aC78BA3
+ *
+ * @author edsphinx
+ * @custom:company Blocketh
+ * @custom:version 4.0.0
+ * ------------------------------------------------------------------------*/
+
 interface IPermit2 {
     /// @notice Token and amount in a permit message
     struct TokenPermissions {
@@ -43,13 +49,7 @@ interface IPermit2 {
         uint256 deadline;
     }
 
-    /**
-     * @notice Transfer tokens using a signed permit
-     * @param permit The permit data signed by the owner
-     * @param transferDetails The transfer recipient and amount
-     * @param owner The owner of the tokens to transfer
-     * @param signature The owner's signature over the permit data
-     */
+    /// @notice Transfer tokens using a signed permit
     function permitTransferFrom(
         PermitTransferFrom calldata permit,
         SignatureTransferDetails calldata transferDetails,
@@ -57,13 +57,7 @@ interface IPermit2 {
         bytes calldata signature
     ) external;
 
-    /**
-     * @notice Get the allowance for a token/spender pair
-     * @param owner The owner of the tokens
-     * @param token The token address
-     * @param spender The spender address
-     * @return The packed allowance data
-     */
+    /// @notice Get the allowance for a token/spender pair
     function allowance(
         address owner,
         address token,

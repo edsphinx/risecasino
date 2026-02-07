@@ -5,15 +5,29 @@
 
 // Map of known error patterns to safe user messages
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
-  'invalid bet amount': 'Invalid bet amount',
-  'insufficient balance': 'Insufficient balance',
-  'insufficient funds': 'Insufficient balance',
-  'game not in correct state': 'Cannot perform this action now',
-  'not your turn': 'Cannot perform this action now',
+  // User actions
   'user rejected': 'Transaction was cancelled',
   'user denied': 'Transaction was cancelled',
   rejected: 'Transaction was cancelled',
   cancelled: 'Transaction was cancelled',
+
+  // Balance / approval
+  'insufficient balance': 'Insufficient balance',
+  'insufficient funds': 'Insufficient balance',
+  'invalid bet amount': 'Invalid bet amount',
+
+  // VyreJackCore contract errors
+  'bet out of range': 'Bet amount is outside table limits',
+  'game in progress': 'You already have an active game',
+  'game not active': 'Game is currently paused',
+  'not your turn': 'Cannot perform this action now',
+  'can only double on initial hand': 'Can only double down on first two cards',
+  'already doubled': 'Already doubled down',
+  'can only surrender on initial hand': 'Can only surrender on first two cards',
+  'no active game': 'No active game found',
+  'vrf not timed out': 'Please wait for randomness to arrive',
+
+  // Network
   'network error': 'Network error. Please try again.',
   timeout: 'Request timed out. Please try again.',
 };

@@ -1,143 +1,111 @@
 /**
- * useSessionKey - Session key hook without wagmi
- * REFACTORED: Simplified to align with Meteoro pattern
+ * useSessionKey - Session key hook using Zustand store
+ *
+ * REFACTORED: Now uses sessionStore for state management.
+ * The store handles persistence and hydration, eliminating race conditions.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
-import {
-  getActiveSessionKey,
-  ensureSessionKey,
-  revokeSessionKey,
-  getSessionKeyTimeRemaining,
-  isSessionKeyValid,
-  clearAllSessionKeys,
-  type SessionKeyData,
-} from '@/services/sessionKeyManager';
+import { useMemo, useEffect } from 'preact/hooks';
+import { useSessionStore, selectHasHydrated, selectIsCreating, selectSessionError } from '@/stores';
 import { logger } from '@/lib/logger';
 import type { TimeRemaining } from '@vyrejack/shared';
 
 export interface UseSessionKeyReturn {
   hasSessionKey: boolean;
+  hasHydrated: boolean;
   sessionExpiry: TimeRemaining | null;
   keyPair: { publicKey: string; privateKey: string } | null;
   isCreating: boolean;
+  error: string | null;
   create: () => Promise<boolean>;
   revoke: () => Promise<void>;
 }
 
 export function useSessionKey(address: `0x${string}` | null): UseSessionKeyReturn {
-  const [sessionData, setSessionData] = useState<SessionKeyData | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
+  // Use Zustand store with selectors for optimized re-renders
+  const sessionKey = useSessionStore((state) => state.sessionKey);
+  const hasHydrated = useSessionStore(selectHasHydrated);
+  const isCreating = useSessionStore(selectIsCreating);
+  const error = useSessionStore(selectSessionError);
 
-  // Load existing session key on mount or address change
+  // Get store actions
+  const createSessionKey = useSessionStore((state) => state.createSessionKey);
+  const revokeSessionKey = useSessionStore((state) => state.revokeSessionKey);
+  const getTimeRemaining = useSessionStore((state) => state.getTimeRemaining);
+  const isValid = useSessionStore((state) => state.isValid);
+
+  // Debug logging on mount and state changes
   useEffect(() => {
-    if (!address) {
-      setSessionData(null);
-      return;
+    logger.log('🔑 [useSessionKey] State change:', {
+      hasHydrated,
+      address: address?.slice(0, 10),
+      sessionKeyAddress: sessionKey?.address?.slice(0, 10),
+      sessionKeyPublicKey: sessionKey?.publicKey?.slice(0, 20),
+      isValid: sessionKey ? isValid() : false,
+    });
+  }, [hasHydrated, address, sessionKey, isValid]);
+
+  // Check if session key is valid and matches current address
+  const hasValidSessionKey = useMemo(() => {
+    if (!hasHydrated) return false;
+    if (!sessionKey) return false;
+    if (!isValid()) return false;
+
+    // If we have an address, verify it matches
+    if (address && sessionKey.address) {
+      return sessionKey.address.toLowerCase() === address.toLowerCase();
     }
 
-    const restoreFromLocalStorage = () => {
-      // getActiveSessionKey now handles validation internally
-      const existingKey = getActiveSessionKey(address);
-
-      logger.log('🔑 [useSessionKey] Restore check:', {
-        address,
-        storageKey: `vyrejack_session_key_${address.toLowerCase()}`,
-        found: !!existingKey,
-        publicKey: existingKey?.publicKey?.slice(0, 20),
-        expiry: existingKey ? new Date(existingKey.expiry * 1000).toLocaleString() : 'N/A',
-      });
-
-      if (existingKey) {
-        setSessionData(existingKey);
-        logger.log('🔑 [useSessionKey] Session key restored successfully');
-      } else {
-        setSessionData(null);
-        logger.log('🔑 [useSessionKey] No local session key found - user needs to create one');
-      }
-    };
-
-    restoreFromLocalStorage();
-  }, [address]);
-
-  // Update timer periodically
-  useEffect(() => {
-    if (!sessionData) return;
-
-    // Update every minute if more than 1 hour remaining, every second if less
-    // Or just every 5 seconds is fine for UI
-    const interval = setInterval(() => {
-      if (!isSessionKeyValid(sessionData)) {
-        logger.log('🔑 [useSessionKey] Key expired during polling');
-        setSessionData(null);
-      } else {
-        // Force re-render to update time remaining
-        setSessionData({ ...sessionData });
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [sessionData?.publicKey]);
-
-  const hasSessionKey = Boolean(sessionData && isSessionKeyValid(sessionData));
+    // If no address connected yet but we have a key, still consider it valid
+    // The address check will happen when wallet connects
+    return true;
+  }, [hasHydrated, sessionKey, address, isValid]);
 
   const timeRemaining: TimeRemaining | null = useMemo(() => {
-    if (!sessionData) return null;
-
-    const remaining = getSessionKeyTimeRemaining(sessionData);
+    if (!sessionKey || !isValid()) return null;
+    const remaining = getTimeRemaining();
     return {
       hours: remaining.hours,
-      minutes: remaining.minutes % 60,
-      seconds: remaining.seconds % 60,
+      minutes: remaining.minutes,
+      seconds: remaining.seconds,
       expired: remaining.expired,
     };
-  }, [sessionData]);
+  }, [sessionKey, getTimeRemaining, isValid]);
 
   const keyPair = useMemo(() => {
-    if (!sessionData) return null;
+    if (!sessionKey) return null;
+    // Only return keyPair if address matches (or no address provided)
+    if (address && sessionKey.address) {
+      if (sessionKey.address.toLowerCase() !== address.toLowerCase()) {
+        return null;
+      }
+    }
     return {
-      publicKey: sessionData.publicKey,
-      privateKey: sessionData.privateKey,
+      publicKey: sessionKey.publicKey,
+      privateKey: sessionKey.privateKey,
     };
-  }, [sessionData]);
+  }, [sessionKey, address]);
 
-  const create = useCallback(async (): Promise<boolean> => {
-    if (!address) return false;
-
-    try {
-      setIsCreating(true);
-      // Ensure uses trusting logic now
-      const newKey = await ensureSessionKey(address);
-      setSessionData(newKey);
-      return true;
-    } catch (err) {
-      logger.error('🔑 Failed to create session key:', err);
-      // If ensure fails, it might be permission rejected
+  const create = async (): Promise<boolean> => {
+    if (!address) {
+      logger.error('[useSessionKey] No address provided');
       return false;
-    } finally {
-      setIsCreating(false);
     }
-  }, [address]);
+    const result = await createSessionKey(address);
+    return result !== null;
+  };
 
-  const revoke = useCallback(async (): Promise<void> => {
-    if (!sessionData?.publicKey) return;
-
-    try {
-      await revokeSessionKey(sessionData.publicKey);
-      setSessionData(null);
-    } catch (err) {
-      logger.error('🔑 Failed to revoke session key:', err);
-      // Force clear anyway
-      clearAllSessionKeys();
-      setSessionData(null);
-    }
-  }, [sessionData]);
+  const revoke = async (): Promise<void> => {
+    await revokeSessionKey();
+  };
 
   return {
-    hasSessionKey,
+    hasSessionKey: hasValidSessionKey,
+    hasHydrated,
     sessionExpiry: timeRemaining,
     keyPair,
     isCreating,
+    error,
     create,
     revoke,
   };

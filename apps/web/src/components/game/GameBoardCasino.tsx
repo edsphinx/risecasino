@@ -1,29 +1,24 @@
 /**
  * GameBoardCasino - Container for VyreCasino game
  *
- * 🏗️ ARCHITECTURE: This is a CONTAINER component that:
+ * ARCHITECTURE: This is a CONTAINER component that:
  * - Uses hooks for state management (all business logic in hooks)
  * - Passes state down to PURE UI components
+ * - gamePhase from store is the single source of truth for game flow
  *
- * ⚡ PERFORMANCE:
+ * PERFORMANCE:
  * - NO POLLING for game state (WebSocket events)
- * - Card accumulation from real-time events
- * - Snapshot mechanism preserves cards at game end
- *
- * 🎨 UX FEATURES (v4 - restored from ETH version):
- * - DEGEN result banner with neon colors
- * - Win celebration overlay
- * - Lose shake/flash effects
- * - XP popup on game end
- * - ShareVictory button
+ * - SSOT card display via gameCards + revealedCount
  */
 
-import { useState, useMemo, useCallback, useRef } from 'preact/hooks';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'preact/hooks';
 import { useWallet } from '@/context/WalletContext';
 import { useVyreCasinoActions } from '@/hooks/useVyreCasinoActions';
 import { useTokenBalance } from '@/hooks/useTokenBalance';
-import { useGameStateCasino } from '@/hooks/useGameStateCasino';
+import { useGameState } from '@/hooks/useGameState';
 import { useTabFocus } from '@/hooks/useTabFocus';
+import { useAnimationOrchestrator } from '@/hooks/useAnimationOrchestrator';
+import { useGameStore, selectGamePhase } from '@/stores/gameStore';
 import { emitBalanceChange } from '@/lib/balanceEvents';
 import { BettingPanel } from './BettingPanel';
 import { ActionButtons } from './ActionButtons';
@@ -35,6 +30,7 @@ import { SkeletonHand } from './SkeletonHand';
 import { MobileHistory } from './MobileHistory';
 import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
+import { VRFWaitingOverlay } from './VRFWaitingOverlay';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
 
@@ -44,7 +40,6 @@ interface GameBoardCasinoProps {
   tokenContext?: 'ETH' | 'CHIP' | 'USDC';
 }
 
-// XP popup state
 interface XPPopupState {
   xp: number;
   key: number;
@@ -54,6 +49,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const [betAmount, setBetAmount] = useState('10');
   const [xpPopup, setXpPopup] = useState<XPPopupState | null>(null);
 
+  // Overlay timing: delay between result arriving and overlay showing (for dealer animation)
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+
   // Derive context if not provided
   const context =
     tokenContext || (tokenSymbol === 'USDC' ? 'USDC' : tokenSymbol === 'CHIP' ? 'CHIP' : 'ETH');
@@ -61,27 +59,36 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const wallet = useWallet();
   const isActiveTab = useTabFocus();
 
-  // ⚡ Token balance hook - cached reads with polling
+  // Animation orchestrator - manages staggered card reveals
+  useAnimationOrchestrator();
+
+  // Game phase from store (single source of truth)
+  const gamePhase = useGameStore(selectGamePhase);
+  const { resetAnimationState, clearGameCards, setGamePhase } = useGameStore();
+
+  // SSOT: Get raw state for card display
+  const gameCards = useGameStore((s) => s.gameCards);
+  const revealedCount = useGameStore((s) => s.revealedCount);
+  const isHiddenCardFlipped = useGameStore((s) => s.isHiddenCardFlipped);
+
+  // Token balance hook
   const {
     formattedBalance,
     isApproved,
     refresh: refreshBalance,
   } = useTokenBalance(token, wallet.address as `0x${string}` | null);
 
-  // ⚡ Game state hook - WebSocket events + card accumulation + snapshots
+  // Game state hook - WebSocket events + SSOT management
   const {
     game,
-    playerValue,
-    dealerValue,
     isPlayerTurn,
     hasActiveGame,
     showingResult,
     lastGameResult,
     clearLastResult,
+    isEventConnected,
     refetch: refetchGame,
-    snapshotCards,
-    accumulatedCards,
-  } = useGameStateCasino(wallet.address as `0x${string}` | null);
+  } = useGameState(wallet.address as `0x${string}` | null);
 
   // XP popup when game ends
   const showXPPopup = useCallback((xp: number) => {
@@ -112,7 +119,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
       lastGameResult.result === 'blackjack' ? 100 : lastGameResult.result === 'win' ? 50 : 25;
     setTimeout(() => showXPPopup(xpAmount), 500);
 
-    // Save to game history (only if result is defined)
     if (lastGameResult.result) {
       StorageService.addGameToHistory({
         result: lastGameResult.result,
@@ -137,72 +143,191 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return ['10', '50', '100', '500', '1000'];
   }, [tokenSymbol]);
 
-  // Determine if can bet (not showing result, no active game)
+  // Determine if can bet (idle phase, not loading, no active game)
   const canBet =
-    isActiveTab && wallet.isConnected && !actions.isLoading && !hasActiveGame && !showingResult;
+    isActiveTab &&
+    wallet.isConnected &&
+    !actions.isLoading &&
+    !hasActiveGame &&
+    !showingResult &&
+    gamePhase === 'idle';
 
-  // Wrapped actions that take snapshot before executing
+  // Game actions
   const handlePlaceBet = useCallback(() => {
+    // Double-click guard: only allow from idle phase
+    const currentPhase = useGameStore.getState().gamePhase;
+    if (currentPhase !== 'idle') {
+      logger.log('[GameBoardCasino] Ignoring bet - phase is:', currentPhase);
+      return;
+    }
     clearLastResult();
+    resetAnimationState();
+    clearGameCards();
+    setGamePhase('waiting_vrf');
     actions.placeBet(betAmount, token);
-  }, [actions, betAmount, token, clearLastResult]);
+  }, [
+    actions,
+    betAmount,
+    token,
+    clearLastResult,
+    resetAnimationState,
+    clearGameCards,
+    setGamePhase,
+  ]);
 
   const handleHit = useCallback(() => {
-    snapshotCards();
     actions.hit();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleStand = useCallback(() => {
-    snapshotCards();
     actions.stand();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleDouble = useCallback(() => {
-    snapshotCards();
     actions.double();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleSurrender = useCallback(() => {
-    snapshotCards();
     actions.surrender();
-  }, [actions, snapshotCards]);
+  }, [actions]);
 
   const handleNewGame = useCallback(() => {
     clearLastResult();
+    resetAnimationState();
+    clearGameCards();
     refreshBalance();
     refetchGame();
-  }, [clearLastResult, refreshBalance, refetchGame]);
+  }, [clearLastResult, resetAnimationState, clearGameCards, refreshBalance, refetchGame]);
 
-  // Determine which cards/values to display
+  // SSOT: Compute display cards from raw state
   const displayPlayerCards = useMemo(() => {
     if (showingResult && lastGameResult) {
       return lastGameResult.playerCards;
     }
-    if (accumulatedCards.playerCards.length >= 2) {
-      return accumulatedCards.playerCards;
-    }
-    return game?.playerCards ?? [];
-  }, [showingResult, lastGameResult, accumulatedCards, game]);
+    return gameCards.playerCards.slice(0, revealedCount.player);
+  }, [showingResult, lastGameResult, gameCards.playerCards, revealedCount.player]);
 
   const displayDealerCards = useMemo(() => {
     if (showingResult && lastGameResult) {
       return lastGameResult.dealerCards;
     }
-    if (accumulatedCards.dealerCards.length >= 1) {
-      return accumulatedCards.dealerCards;
+    const cards = gameCards.dealerCards.slice(0, revealedCount.dealer);
+    if (cards.length >= 2 && !isHiddenCardFlipped) {
+      return [cards[0], -1, ...cards.slice(2)];
     }
-    return game?.dealerCards ?? [];
-  }, [showingResult, lastGameResult, accumulatedCards, game]);
+    return cards;
+  }, [
+    showingResult,
+    lastGameResult,
+    gameCards.dealerCards,
+    revealedCount.dealer,
+    isHiddenCardFlipped,
+  ]);
 
-  const displayPlayerValue =
-    showingResult && lastGameResult ? lastGameResult.playerValue : playerValue;
-  const displayDealerValue =
-    showingResult && lastGameResult ? lastGameResult.dealerValue : dealerValue;
+  // SSOT: Derive flipped indices
+  const ssotFlippedPlayerIndices = useMemo(() => {
+    return Array.from({ length: revealedCount.player }, (_, i) => i);
+  }, [revealedCount.player]);
+
+  const ssotFlippedDealerIndices = useMemo(() => {
+    const indices: number[] = [];
+    for (let i = 0; i < revealedCount.dealer; i++) {
+      if (i !== 1 || isHiddenCardFlipped) {
+        indices.push(i);
+      }
+    }
+    return indices;
+  }, [revealedCount.dealer, isHiddenCardFlipped]);
+
+  // Calculate player value from display cards
+  const displayPlayerValue = useMemo(() => {
+    if (showingResult && lastGameResult) {
+      return lastGameResult.playerValue;
+    }
+    if (displayPlayerCards.length === 0) return undefined;
+
+    let value = 0;
+    let aces = 0;
+    for (const card of displayPlayerCards) {
+      const rank = card % 13;
+      if (rank === 0) {
+        aces++;
+        value += 11;
+      } else if (rank >= 10) {
+        value += 10;
+      } else {
+        value += rank + 1;
+      }
+    }
+    while (value > 21 && aces > 0) {
+      value -= 10;
+      aces--;
+    }
+    return value;
+  }, [showingResult, lastGameResult, displayPlayerCards]);
+
+  // Calculate dealer value only from VISIBLE cards (not -1 placeholder)
+  const displayDealerValue = useMemo(() => {
+    if (showingResult && lastGameResult) {
+      return lastGameResult.dealerValue;
+    }
+    const visibleCards = displayDealerCards.filter((c) => c !== -1);
+    if (visibleCards.length === 0) return undefined;
+
+    let value = 0;
+    let aces = 0;
+    for (const card of visibleCards) {
+      const rank = card % 13;
+      if (rank === 0) {
+        aces++;
+        value += 11;
+      } else if (rank >= 10) {
+        value += 10;
+      } else {
+        value += rank + 1;
+      }
+    }
+    while (value > 21 && aces > 0) {
+      value -= 10;
+      aces--;
+    }
+    return value;
+  }, [showingResult, lastGameResult, displayDealerCards]);
+
   const displayBet = showingResult && lastGameResult ? lastGameResult.bet : game?.bet;
   const displayResult = showingResult && lastGameResult ? lastGameResult.result : null;
 
-  // Hide dealer's second card during player turn (not during result)
-  const hideSecondCard = isPlayerTurn && !showingResult;
+  // Hide dealer's second card ALWAYS except when showing final result
+  const hideSecondCard = !showingResult;
+
+  // Result overlay timing: delay showing overlay to let dealer animation play
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (showingResult && !showResultOverlay) {
+      // Use SSOT dealer cards count for accurate animation timing
+      const ssotDealerCount = useGameStore.getState().gameCards.dealerCards.length;
+      const dealerCardCount = ssotDealerCount || lastGameResult?.dealerCards.length || 2;
+      const animationTime = 300 + Math.max(0, dealerCardCount - 2) * 300 + 800;
+
+      overlayTimerRef.current = setTimeout(() => {
+        overlayTimerRef.current = null;
+        setGamePhase('showing_result');
+        setShowResultOverlay(true);
+      }, animationTime);
+
+      return () => {
+        if (overlayTimerRef.current) {
+          clearTimeout(overlayTimerRef.current);
+          overlayTimerRef.current = null;
+        }
+      };
+    }
+
+    // Reset overlay when result is cleared
+    if (!showingResult && showResultOverlay) {
+      setShowResultOverlay(false);
+    }
+  }, [showingResult, showResultOverlay, lastGameResult, setGamePhase]);
 
   // Format bet for display
   const formatBetDisplay = (bet: bigint | undefined) => {
@@ -210,6 +335,12 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     const decimals = tokenSymbol === 'USDC' ? 6 : 18;
     return (Number(bet) / 10 ** decimals).toFixed(decimals === 6 ? 2 : 0);
   };
+
+  // Is waiting for dealer (not player's turn, game active but not showing result yet)
+  const isWaitingDealer =
+    gamePhase === 'dealer_reveal' ||
+    gamePhase === 'dealer_hitting' ||
+    (hasActiveGame && !isPlayerTurn && !showingResult);
 
   return (
     <div className="game-board-mobile bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
@@ -221,6 +352,13 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           type="error"
           autoDismissMs={6000}
         />
+      )}
+
+      {/* WebSocket disconnection banner */}
+      {wallet.isConnected && !isEventConnected && hasActiveGame && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-2 px-4 text-sm animate-pulse">
+          Connection lost — reconnecting...
+        </div>
       )}
 
       <main className="max-w-6xl mx-auto p-2 sm:p-4 py-4 sm:py-8">
@@ -263,6 +401,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         hideSecond={hideSecondCard}
                         result={displayResult === 'lose' ? 'win' : null}
                         hideValue
+                        flippedIndices={ssotFlippedDealerIndices}
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} isDealer />
@@ -270,7 +409,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                       <span className="play-zone-empty">Deal to start</span>
                     )}
                   </div>
-                  {/* Animated value display with colors */}
                   <HandValue
                     value={displayDealerCards.length > 0 ? displayDealerValue : undefined}
                     cardCount={displayDealerCards.length}
@@ -289,6 +427,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                         value={displayPlayerValue ?? undefined}
                         result={displayResult}
                         hideValue
+                        flippedIndices={ssotFlippedPlayerIndices}
                       />
                     ) : actions.isLoading ? (
                       <SkeletonHand cardCount={2} />
@@ -296,7 +435,6 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                       <span className="play-zone-empty">Your cards</span>
                     )}
                   </div>
-                  {/* Animated value display with colors */}
                   <HandValue
                     value={displayPlayerCards.length > 0 ? displayPlayerValue : undefined}
                     cardCount={displayPlayerCards.length}
@@ -317,7 +455,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                 </span>
               </div>
 
-              {/* XP Gain Popup - stays on table */}
+              {/* XP Gain Popup */}
               {xpPopup && (
                 <XPGainPopup key={xpPopup.key} xpAmount={xpPopup.xp} onComplete={hideXPPopup} />
               )}
@@ -332,16 +470,30 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             <div className="controls-panel">
               {wallet.isConnected ? (
                 showingResult ? (
-                  // Show "New Game" button after result
                   <div className="space-y-4">
-                    <button onClick={handleNewGame} className="deal-btn w-full">
+                    <button
+                      onClick={() => {
+                        clearLastResult();
+                        resetAnimationState();
+                        clearGameCards();
+                        setGamePhase('waiting_vrf');
+                        actions.placeBet(betAmount, token);
+                      }}
+                      className="deal-btn w-full"
+                    >
                       <span className="deal-btn-content">
                         <span className="deal-btn-emoji">🎰</span>
                         PLAY AGAIN
                       </span>
                     </button>
+                    <button
+                      onClick={handleNewGame}
+                      className="text-sm text-gray-400 hover:text-gray-200 underline w-full"
+                    >
+                      Change bet
+                    </button>
                   </div>
-                ) : hasActiveGame && isPlayerTurn ? (
+                ) : gamePhase === 'player_turn' || (hasActiveGame && isPlayerTurn) ? (
                   <ActionButtons
                     onHit={handleHit}
                     onStand={handleStand}
@@ -351,9 +503,23 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     canSurrender={game?.playerCards.length === 2}
                     isLoading={actions.isLoading}
                   />
-                ) : hasActiveGame ? (
+                ) : gamePhase === 'waiting_vrf' ? (
+                  <VRFWaitingOverlay
+                    gameTimestamp={game?.timestamp ?? 0n}
+                    onCancel={async () => {
+                      const ok = await actions.retryVRF();
+                      if (ok) refetchGame();
+                      return ok;
+                    }}
+                    isLoading={actions.isLoading}
+                  />
+                ) : isWaitingDealer ? (
                   <div className="text-center py-4">
-                    <p className="text-yellow-400 animate-pulse">⏳ Waiting for dealer...</p>
+                    <p className="text-yellow-400 animate-pulse">
+                      {gamePhase === 'dealing_initial'
+                        ? '🃏 Dealing cards...'
+                        : '⏳ Waiting for dealer...'}
+                    </p>
                   </div>
                 ) : (
                   <BettingPanel
@@ -377,7 +543,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
               )}
             </div>
 
-            {/* Desktop History - full details panel */}
+            {/* Desktop History */}
             <div className="hidden md:block">{wallet.isConnected && <GameHistory />}</div>
           </div>
 
@@ -388,13 +554,13 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
             </div>
           )}
 
-          {/* Mobile History - shows last 3 game results (hidden on desktop) */}
+          {/* Mobile History */}
           <div className="md:hidden">{wallet.isConnected && <MobileHistory />}</div>
         </div>
       </main>
 
-      {/* Full-screen result overlay */}
-      {showingResult && lastGameResult && displayResult && (
+      {/* Full-screen result overlay - shows after dealer animation */}
+      {showResultOverlay && lastGameResult && displayResult && (
         <GameResultOverlay
           result={displayResult}
           playerCards={[...displayPlayerCards]}
@@ -405,9 +571,18 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           payout={lastGameResult.payout ? formatBetDisplay(lastGameResult.payout) : undefined}
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
+          quickBets={quickBets}
           onPlayAgain={(newBet) => {
-            // Clear previous result and start new game with selected bet
+            // Double-click guard: only allow from showing_result phase
+            const currentPhase = useGameStore.getState().gamePhase;
+            if (currentPhase !== 'showing_result') {
+              logger.log('[GameBoardCasino] Ignoring play-again - phase is:', currentPhase);
+              return;
+            }
             clearLastResult();
+            resetAnimationState();
+            clearGameCards();
+            setGamePhase('waiting_vrf');
             setBetAmount(newBet);
             actions.placeBet(newBet, token);
           }}

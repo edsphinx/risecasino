@@ -179,6 +179,56 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     }
   }, []);
 
+  // EIP-1193 event listeners: detect account changes and disconnects
+  useEffect(() => {
+    if (!isConnected) return;
+
+    let provider: ReturnType<typeof getProvider>;
+    try {
+      provider = getProvider();
+    } catch {
+      return;
+    }
+
+    // Type-safe access to EIP-1193 event methods (Porto may or may not implement these)
+    const eip1193 = provider as unknown as {
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
+    };
+
+    if (!eip1193.on || !eip1193.removeListener) return;
+
+    const handleAccountsChanged = (accounts: unknown) => {
+      const accts = accounts as string[];
+      if (!accts || accts.length === 0) {
+        logger.log('🔗 Wallet accounts changed: disconnected');
+        setAddress(null);
+        setIsConnected(false);
+        removeWallet();
+      } else if (accts[0].toLowerCase() !== address?.toLowerCase()) {
+        logger.log('🔗 Wallet account changed to:', accts[0]);
+        const newAddr = accts[0] as `0x${string}`;
+        setAddress(newAddr);
+        saveWallet(newAddr);
+      }
+    };
+
+    const handleDisconnect = () => {
+      logger.log('🔗 Wallet disconnect event received');
+      setAddress(null);
+      setIsConnected(false);
+      removeWallet();
+    };
+
+    eip1193.on('accountsChanged', handleAccountsChanged);
+    eip1193.on('disconnect', handleDisconnect);
+
+    return () => {
+      eip1193.removeListener!('accountsChanged', handleAccountsChanged);
+      eip1193.removeListener!('disconnect', handleDisconnect);
+    };
+  }, [isConnected, address]);
+
   const disconnect = useCallback(() => {
     const prevAddress = address;
     setAddress(null);

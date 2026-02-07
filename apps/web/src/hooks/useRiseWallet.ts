@@ -62,6 +62,14 @@ export function useRiseWallet(): UseRiseWalletReturn {
 
   // Auto-create session on connection (for returning users)
   useEffect(() => {
+    // CRITICAL: Wait for session store to rehydrate from localStorage
+    // This prevents the race condition where we'd show onboarding before
+    // the stored session key has been restored
+    if (!sessionKey.hasHydrated) {
+      logger.log('🔑 [useRiseWallet] Waiting for session store hydration...');
+      return;
+    }
+
     // Detect fresh connection (was disconnected, now connected)
     if (connection.isConnected && !wasConnected) {
       setWasConnected(true);
@@ -90,7 +98,13 @@ export function useRiseWallet(): UseRiseWalletReturn {
       setShowOnboarding(false);
       setShowExpiryModal(false);
     }
-  }, [connection.isConnected, wasConnected, skipFastMode, sessionKey.hasSessionKey]);
+  }, [
+    connection.isConnected,
+    wasConnected,
+    skipFastMode,
+    sessionKey.hasSessionKey,
+    sessionKey.hasHydrated,
+  ]);
 
   // Track previous session state to detect expiry
   const [hadSessionKey, setHadSessionKey] = useState(false);

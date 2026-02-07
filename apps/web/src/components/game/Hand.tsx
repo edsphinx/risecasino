@@ -1,9 +1,14 @@
 import type { HandProps } from '@vyrejack/shared';
+import { useRef, useEffect } from 'preact/hooks';
+import gsap from 'gsap';
 import { PlayingCard } from './PlayingCard';
+import { HiddenCard } from './HiddenCard';
 
-// Extend HandProps to allow omitting value display (for external rendering)
+// Extend HandProps to allow omitting value display and sequential flip control
 interface ExtendedHandProps extends HandProps {
   hideValue?: boolean;
+  /** Indices of cards that have been flipped (for sequential reveal) */
+  flippedIndices?: number[];
 }
 
 export function Hand({
@@ -11,9 +16,9 @@ export function Hand({
   value,
   isSoft,
   isDealer = false,
-  hideSecond = false,
   result,
   hideValue = false,
+  flippedIndices,
 }: ExtendedHandProps) {
   // Determine visual state class for psychological feedback
   const getResultClass = () => {
@@ -50,20 +55,28 @@ export function Hand({
         className={`hand-cards ${cards.length >= 5 ? 'hand-cards-compact' : ''}`}
         style={`--card-total: ${cards.length};`}
       >
-        {cards.map((card, index) => (
-          <div
-            key={`${card}-${index}`}
-            className="hand-card"
-            style={`--card-index: ${index}; z-index: ${index};`}
-          >
-            <PlayingCard
-              cardIndex={card}
-              faceUp={!(isDealer && index === 1 && hideSecond)}
-              delay={index * 150}
-              isNew={true}
-            />
-          </div>
-        ))}
+        {cards.map((card, index) => {
+          // ⚠️ SECURITY: card === -1 means placeholder (hidden card, no real value in DOM)
+          const isHiddenCard = card === -1;
+
+          // ⚡ SEQUENTIAL FLIP: Card is face-up if included in flippedIndices,
+          // or if flippedIndices is not provided (backwards compat)
+          const isFaceUp = flippedIndices ? flippedIndices.includes(index) : true;
+
+          return (
+            <div
+              key={`${isHiddenCard ? 'hidden' : card}-${index}`}
+              className="hand-card"
+              style={`--card-index: ${index}; z-index: ${index};`}
+            >
+              {isHiddenCard ? (
+                <HiddenCard dealIndex={index} delay={index * 150} isNew={true} />
+              ) : (
+                <PlayingCard cardIndex={card} faceUp={isFaceUp} delay={index * 150} isNew={true} />
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Value display only if not hidden */}
@@ -86,6 +99,33 @@ interface HandValueProps {
 }
 
 export function HandValue({ value, isSoft, cardCount = 0 }: HandValueProps) {
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const prevValueRef = useRef<number | undefined>(undefined);
+
+  // ⚡ GSAP: Animate value changes with countUp + scale pulse
+  useEffect(() => {
+    if (valueRef.current && value !== undefined && prevValueRef.current !== value) {
+      const el = valueRef.current;
+
+      // CountUp animation
+      gsap.fromTo(
+        el,
+        { textContent: prevValueRef.current || 0 },
+        {
+          textContent: value,
+          duration: 0.3,
+          snap: { textContent: 1 },
+          ease: 'power1.out',
+        }
+      );
+
+      // Scale pulse for emphasis
+      gsap.fromTo(el, { scale: 1.3 }, { scale: 1, duration: 0.25, ease: 'back.out(1.7)' });
+
+      prevValueRef.current = value;
+    }
+  }, [value]);
+
   // Show placeholder when no cards dealt to prevent layout shift
   if (value === undefined) {
     return (
@@ -112,7 +152,9 @@ export function HandValue({ value, isSoft, cardCount = 0 }: HandValueProps) {
 
   return (
     <div className={`hand-value-standalone ${valueClass}`}>
-      <span className="value-number">{value}</span>
+      <span ref={valueRef} className="value-number">
+        {value}
+      </span>
       {/* Always show hard/soft for consistent height */}
       <span className="value-type">{isSoft ? 'soft' : 'hard'}</span>
       {badge && <span className="value-badge">{badge}</span>}

@@ -62,7 +62,12 @@ async function calculateHandValue(cards: number[]): Promise<HandValue> {
     args: [cards.map((c) => c as number)],
   });
 
-  return { value, isSoft };
+  return {
+    value,
+    isSoft,
+    isBust: value > 21,
+    isBlackjack: value === 21 && cards.length === 2,
+  };
 }
 
 /**
@@ -111,7 +116,7 @@ async function getFullGameData(player: `0x${string}`) {
     calculateHandValue([...game.playerCards]),
     game.dealerCards.length > 0
       ? calculateHandValue([game.dealerCards[0]]) // Only visible card
-      : Promise.resolve({ value: 0, isSoft: false }),
+      : Promise.resolve({ value: 0, isSoft: false, isBust: false, isBlackjack: false }),
   ]);
 
   return {
