@@ -17,6 +17,13 @@ export { useGameNavigation } from './useGameNavigation';
 // Game action hooks
 export { useVyreCasinoActions } from './useVyreCasinoActions';
 
+// Game Engine hooks (Phase 2)
+export {
+  useGameEngine,
+  type UseGameEngineReturn,
+  type UseGameEngineOptions,
+} from './useGameEngine';
+
 // Balance hooks
 export { useTokenBalance } from './useTokenBalance';
 export { useChipBalance } from './useChipBalance';

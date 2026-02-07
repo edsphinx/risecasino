@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPublicClient, webSocket } from 'viem';
+import { shredActions } from 'shreds/viem';
 import { riseTestnet, VYREJACKCORE_ADDRESS, VYRECASINO_ADDRESS } from '@/lib/contract';
 import { VYREJACKCORE_ABI, VYRECASINO_ABI } from '@vyrejack/shared';
 import { logger } from '@/lib/logger';
@@ -91,11 +92,11 @@ export function useGameEvents(
     logger.log('[GameEventsCasino] Starting WebSocket for:', playerAddress);
 
     try {
-      // Create WebSocket client
+      // Create WebSocket client with Shreds extension for Rise Chain
       const client = createPublicClient({
         chain: riseTestnet as Parameters<typeof createPublicClient>[0]['chain'],
         transport: webSocket(WSS_URL),
-      });
+      }).extend(shredActions);
       clientRef.current = client;
 
       // Watch for GamePlayed events (V6 - actual event emitted by contract)
@@ -294,7 +295,11 @@ export function useGameEvents(
         },
         onLogs: (logs) => {
           for (const log of logs) {
-            const args = (log as any).args as { player: `0x${string}`; amount: bigint };
+            // Type the log args properly to avoid 'any'
+            const eventLog = log as unknown as {
+              args: { player: `0x${string}`; amount: bigint };
+            };
+            const args = eventLog.args;
             logger.log('[GameEventsCasino] XPAwarded:', args.amount.toString());
             if (callbacksRef.current.onXPAwarded) {
               callbacksRef.current.onXPAwarded({ amount: args.amount });
