@@ -310,8 +310,8 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   // SAFETY: Hard-capped at MAX_POLLS to prevent runaway requests.
   // Uses a ref counter so the limit persists across effect re-runs.
   const pollCountRef = useRef(0);
-  const MAX_POLLS = 15; // 15 polls × 2s = 30s max polling time
-  const POLL_INTERVAL_MS = 2000;
+  const MAX_POLLS = 5; // 5 polls × 1s = 5s max (Rise has 10ms blocks, VRF responds in <1s)
+  const POLL_INTERVAL_MS = 1000;
 
   useEffect(() => {
     const isPollingPhase =
