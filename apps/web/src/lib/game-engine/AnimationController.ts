@@ -167,6 +167,43 @@ export class AnimationController {
         return tl;
     }
 
+    /**
+     * Animate bust effect (shake + slight red tint fade)
+     * Used when player or dealer busts (exceeds 21)
+     */
+    animateBust(cards: HTMLElement[]): GSAPTimeline {
+        const tl = gsap.timeline() as unknown as GSAPTimeline;
+
+        // Shake animation similar to lose
+        tl.to(cards, {
+            x: '+=8',
+            duration: this.timing.loseShake / 6,
+            ease: 'power2.inOut',
+        });
+
+        tl.to(cards, {
+            x: '-=16',
+            duration: this.timing.loseShake / 6,
+            ease: 'power2.inOut',
+        });
+
+        tl.to(cards, {
+            x: '+=16',
+            duration: this.timing.loseShake / 6,
+            ease: 'power2.inOut',
+        });
+
+        tl.to(cards, {
+            x: '-=8',
+            opacity: 0.7,
+            duration: this.timing.loseShake / 6,
+            ease: 'power2.out',
+        });
+
+        this.activeTimelines.push(tl);
+        return tl;
+    }
+
     // =========================================================================
     // CONTROL METHODS
     // =========================================================================

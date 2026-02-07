@@ -7,8 +7,8 @@
  * ⚠️ STRICT TYPING: No `any` types allowed.
  */
 
-import type { CardIndex, Suit, Rank } from './types';
-import { SUIT_NAMES, RANK_NAMES } from './types';
+import type { CardIndex, Rank } from './types';
+import { Suit, SUIT_SYMBOLS, RANK_NAMES } from './types';
 
 /**
  * Counter for unique card IDs
@@ -89,7 +89,7 @@ export class CardRenderer {
         // Create card face content
         const suit = getSuit(cardIndex);
         const rank = getRank(cardIndex);
-        const suitSymbol = SUIT_NAMES[suit];
+        const suitSymbol = SUIT_SYMBOLS[suit];
         const rankSymbol = RANK_NAMES[rank];
 
         card.innerHTML = `

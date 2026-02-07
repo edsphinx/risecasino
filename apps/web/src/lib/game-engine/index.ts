@@ -33,7 +33,7 @@ export type {
 
 export {
     VALID_TRANSITIONS,
-    SUIT_NAMES,
+    SUIT_SYMBOLS,
     RANK_NAMES,
     DEFAULT_CONFIG,
     TIMING_PRESETS,

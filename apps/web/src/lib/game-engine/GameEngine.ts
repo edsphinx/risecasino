@@ -14,7 +14,7 @@ import type {
     GameEngineConfig,
     EngineGameState,
     GamePhase,
-    GameResult,
+    EngineGameResult,
     CardIndex,
     CardPosition,
     StateListener,
@@ -29,7 +29,7 @@ type PhaseListener = (phase: GamePhase) => void;
 /**
  * Game end listener type
  */
-type GameEndListener = (result: GameResult) => void;
+type GameEndListener = (result: EngineGameResult) => void;
 
 /**
  * GameEngine class
@@ -102,11 +102,11 @@ export class GameEngine {
     /**
      * End the game with a result
      */
-    endGame(result: GameResult): void {
+    endGame(result: EngineGameResult): void {
         if (this.isDestroyed) return;
 
-        // Map GameResult to GamePhase
-        const resultPhaseMap: Record<GameResult, GamePhase> = {
+        // Map EngineGameResult to GamePhase
+        const resultPhaseMap: Record<EngineGameResult, GamePhase> = {
             win: 'player_win',
             lose: 'dealer_win',
             push: 'push',
@@ -126,6 +126,22 @@ export class GameEngine {
 
         // Notify listeners
         this.gameEndListeners.forEach((listener) => listener(result));
+    }
+
+    /**
+     * Animate bust effect on player or dealer cards
+     * Called when PlayerBusted or DealerBusted events are received
+     */
+    animateBust(isDealer: boolean): void {
+        if (this.isDestroyed) return;
+
+        const cards = isDealer
+            ? this.getDealerCardElements()
+            : this.getPlayerCardElements();
+
+        if (cards.length > 0) {
+            this.animator.animateBust(cards);
+        }
     }
 
     // =========================================================================
