@@ -141,12 +141,23 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return ['10', '50', '100', '500', '1000'];
   }, [tokenSymbol]);
 
-  // Determine if can bet (not showing result, no active game)
+  // Determine if can bet (idle phase, not loading, no active game)
   const canBet =
-    isActiveTab && wallet.isConnected && !actions.isLoading && !hasActiveGame && !showingResult;
+    isActiveTab &&
+    wallet.isConnected &&
+    !actions.isLoading &&
+    !hasActiveGame &&
+    !showingResult &&
+    gamePhase === 'idle';
 
   // Game actions
   const handlePlaceBet = useCallback(() => {
+    // Double-click guard: only allow from idle phase
+    const currentPhase = useGameStore.getState().gamePhase;
+    if (currentPhase !== 'idle') {
+      logger.log('[GameBoardCasino] Ignoring bet - phase is:', currentPhase);
+      return;
+    }
     clearLastResult();
     resetAnimationState();
     clearGameCards();
@@ -288,17 +299,26 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
   const hideSecondCard = !showingResult;
 
   // Result overlay timing: delay showing overlay to let dealer animation play
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (showingResult && !showResultOverlay) {
-      const dealerCardCount = lastGameResult?.dealerCards.length ?? 2;
+      // Use SSOT dealer cards count for accurate animation timing
+      const ssotDealerCount = useGameStore.getState().gameCards.dealerCards.length;
+      const dealerCardCount = ssotDealerCount || lastGameResult?.dealerCards.length || 2;
       const animationTime = 300 + Math.max(0, dealerCardCount - 2) * 300 + 800;
 
-      const timer = setTimeout(() => {
+      overlayTimerRef.current = setTimeout(() => {
+        overlayTimerRef.current = null;
         setGamePhase('showing_result');
         setShowResultOverlay(true);
       }, animationTime);
 
-      return () => clearTimeout(timer);
+      return () => {
+        if (overlayTimerRef.current) {
+          clearTimeout(overlayTimerRef.current);
+          overlayTimerRef.current = null;
+        }
+      };
     }
 
     // Reset overlay when result is cleared
@@ -514,6 +534,12 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
           onPlayAgain={(newBet) => {
+            // Double-click guard: only allow from showing_result phase
+            const currentPhase = useGameStore.getState().gamePhase;
+            if (currentPhase !== 'showing_result') {
+              logger.log('[GameBoardCasino] Ignoring play-again - phase is:', currentPhase);
+              return;
+            }
             clearLastResult();
             resetAnimationState();
             clearGameCards();

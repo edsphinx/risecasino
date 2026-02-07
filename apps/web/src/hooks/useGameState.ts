@@ -41,8 +41,7 @@ const DEALER_WIN = 7;
 const PUSH = 8;
 const PLAYER_BLACKJACK = 9;
 
-// Suppress unused variable warnings
-void WAITING_DOUBLE_VRF;
+// Suppress unused variable warning
 void DEALER_TURN;
 
 export interface UseGameStateCasinoReturn {
@@ -135,12 +134,16 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     // SSOT actions
     addGameCard,
     revealNextCard,
-    clearGameCards,
     flipHiddenCard,
+    hydrateFromContract,
   } = useGameStore();
 
   const serviceRef = useRef(service);
   serviceRef.current = service;
+
+  // Track pending timeouts for cleanup on unmount
+  const resolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // SSOT: Hydrate gameCards from contract state on mount/game change
   // This ensures SSOT is synced when page reloads with active game
@@ -181,25 +184,29 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         return;
       }
 
-      logger.log('[HYDRATION] Hydrating SSOT from contract:', game);
+      // Derive correct gamePhase from contract state
+      let hydratedPhase: 'player_turn' | 'waiting_vrf' | 'dealer_reveal';
+      if (gameState === PLAYER_TURN) {
+        hydratedPhase = 'player_turn';
+      } else if (
+        gameState === WAITING_VRF ||
+        gameState === WAITING_HIT_VRF ||
+        gameState === WAITING_DOUBLE_VRF
+      ) {
+        hydratedPhase = 'waiting_vrf';
+      } else {
+        hydratedPhase = 'dealer_reveal';
+      }
+
+      logger.log('[HYDRATION] Batch hydrating SSOT from contract:', game, 'phase:', hydratedPhase);
       hasHydratedThisSession.current = true;
 
-      clearGameCards();
-
-      game.playerCards.forEach((card: number) => {
-        addGameCard(card, false, false);
-        revealNextCard(false);
-      });
-
-      game.dealerCards.forEach((card: number, i: number) => {
-        const isHidden = i === 1;
-        addGameCard(card, true, isHidden);
-        revealNextCard(true);
-      });
+      // Single set() call — no orchestrator thrash
+      hydrateFromContract([...game.playerCards], [...game.dealerCards], hydratedPhase);
 
       lastHydratedGameRef.current = gameKey;
     }
-  }, [service.game, clearGameCards, addGameCard, revealNextCard]);
+  }, [service.game, hydrateFromContract]);
 
   // Handle CardDealt event - populate SSOT
   const handleCardDealt = useCallback(
@@ -237,14 +244,28 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     (event: GameResolvedEvent) => {
       logger.log('[GameStateCasino] GameResolved:', event);
 
+      // Clear any pending timers from a previous resolve (shouldn't happen, but guard)
+      if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+
       // Set dealer reveal phase
       setGamePhase('dealer_reveal');
 
       // Flip the dealer's hidden card face-up
       flipHiddenCard();
 
-      // Small delay to allow any final CardDealt events to arrive
-      setTimeout(() => {
+      // Delay to allow final CardDealt events to arrive
+      // RiseChain has 10ms blocks so events arrive in rapid bursts
+      resolveTimerRef.current = setTimeout(() => {
+        resolveTimerRef.current = null;
+
+        // Guard: if result was already cleared (e.g., user started new game), bail
+        const currentPhase = useGameStore.getState().gamePhase;
+        if (currentPhase === 'idle' || currentPhase === 'betting') {
+          logger.log('[GameStateCasino] Stale resolve timer, phase is:', currentPhase);
+          return;
+        }
+
         const currentService = serviceRef.current;
 
         // Get cards from SSOT (single source)
@@ -294,13 +315,22 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
 
         // Refetch after overlay has time to display
-        setTimeout(() => {
-          currentService.refetch();
+        refetchTimerRef.current = setTimeout(() => {
+          refetchTimerRef.current = null;
+          serviceRef.current.refetch();
         }, 5000);
-      }, 50);
+      }, 100);
     },
     [setGamePhase, flipHiddenCard, setLastGameResult]
   );
+
+  // Cleanup pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    };
+  }, []);
 
   const clearLastResult = useCallback(() => {
     storeClearResult();
@@ -329,7 +359,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
 
   const isWaitingVRF = useMemo(() => {
     const state = service.game?.state;
-    return state === WAITING_VRF || state === WAITING_HIT_VRF;
+    return state === WAITING_VRF || state === WAITING_HIT_VRF || state === WAITING_DOUBLE_VRF;
   }, [service.game]);
 
   return {

@@ -98,6 +98,9 @@ interface GameActions {
 
   // SSOT: Reveal all cards instantly (for result display)
   revealAllCards: () => void;
+
+  // SSOT: Batch-hydrate cards from contract state (single set() call, no orchestrator thrash)
+  hydrateFromContract: (playerCards: number[], dealerCards: number[], phase: GamePhase) => void;
 }
 
 export type GameStore = GameState & GameActions;
@@ -211,7 +214,24 @@ export const useGameStore = create<GameStore>((set) => ({
         dealer: state.gameCards.dealerCards.length,
       },
       isHiddenCardFlipped: true,
+      gamePhase: 'showing_result' as GamePhase,
     })),
+
+  // SSOT: Batch-hydrate from contract — single set() call prevents orchestrator thrash
+  hydrateFromContract: (playerCards, dealerCards, phase) =>
+    set({
+      gameCards: {
+        playerCards,
+        dealerCards,
+        dealerHiddenCard: dealerCards.length >= 2 ? dealerCards[1] : null,
+      },
+      revealedCount: {
+        player: playerCards.length,
+        dealer: dealerCards.length,
+      },
+      isHiddenCardFlipped: false,
+      gamePhase: phase,
+    }),
 }));
 
 // =============================================================================

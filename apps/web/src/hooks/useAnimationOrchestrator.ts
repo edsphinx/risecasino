@@ -95,15 +95,19 @@ export function useAnimationOrchestrator() {
         const hasMore = revealNext();
 
         if (!hasMore && revealTimerRef.current) {
+          // Clear interval BEFORE phase transition to prevent effect re-run race
           clearInterval(revealTimerRef.current);
           revealTimerRef.current = null;
           logger.log('[Orchestrator] All cards revealed');
 
-          // Transition phase if we were dealing
-          const currentPhase = useGameStore.getState().gamePhase;
-          if (currentPhase === 'dealing_initial' || currentPhase === 'waiting_vrf') {
-            setGamePhase('player_turn');
-          }
+          // Defer phase transition to next microtask so the interval cleanup
+          // completes before the Zustand update triggers a re-render
+          queueMicrotask(() => {
+            const currentPhase = useGameStore.getState().gamePhase;
+            if (currentPhase === 'dealing_initial' || currentPhase === 'waiting_vrf') {
+              setGamePhase('player_turn');
+            }
+          });
         }
       }, CARD_REVEAL_INTERVAL);
     }
