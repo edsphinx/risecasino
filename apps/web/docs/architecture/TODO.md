@@ -26,7 +26,7 @@ Migrating VyreCasino game board to hybrid architecture:
 
 ## Phase 1: Core GameEngine Module ✅
 
-**Target: 1-2 days | Status: ✅ Complete (123 tests)**
+**Target: 1-2 days | Status: ✅ Complete (157 tests)**
 
 ### Tasks
 
@@ -65,24 +65,35 @@ e4803c2 feat(game-engine): complete Phase 1 with VyreJackCore alignment
 
 ---
 
-## Phase 2: Integration Bridge
+## Phase 2: Integration Bridge ✅
 
-**Target: 0.5 days | Status: ⬜ Not Started**
+**Target: 0.5 days | Status: ✅ Complete (31 tests)**
 
 ### Tasks
 
-- [ ] Create `useGameEngine.ts` hook
-- [ ] Bridge engine state to Preact components
-- [ ] Handle mount/unmount lifecycle
-- [ ] Write integration tests
-- [ ] Verify no memory leaks
+- [x] Create `useGameEngine.ts` hook
+- [x] Bridge engine state to Preact components (signal-like API)
+- [x] Handle mount/unmount lifecycle
+- [x] Write integration tests (31 tests)
+- [x] Verify no memory leaks (multiple mount/unmount cycles)
 
-### Tests Required
+### Phase 2.5: Shreds Integration ✅
 
-- [ ] Hook: Engine initialization
-- [ ] Hook: State subscription
-- [ ] Hook: Cleanup on unmount
-- [ ] Hook: Multiple mounts/unmounts (fuzzing)
+- [x] Add `shredActions` to `useGameEvents.ts`
+- [x] Add `animateBust()` to `AnimationController` and `GameEngine`
+- [x] Integrate `useGameEvents` inside `useGameEngine`
+- [x] Auto-connect WebSocket when `playerAddress` provided
+- [x] Map events: `CardDealt`, `GameResolved`, `PlayerBusted`, `DealerBusted`, `DealerCardRevealed`
+
+### Tests Complete (31 total)
+
+- [x] Hook: Engine initialization (6 tests)
+- [x] Hook: State subscription (4 tests)
+- [x] Hook: Cleanup on unmount (3 tests)
+- [x] Hook: Multiple mounts/unmounts fuzzing (2 tests)
+- [x] Hook: Actions (8 tests)
+- [x] Hook: Edge cases (6 tests)
+- [x] Hook: Event callbacks (2 tests)
 
 ---
 
@@ -150,7 +161,7 @@ e4803c2 feat(game-engine): complete Phase 1 with VyreJackCore alignment
 | ----------------------------------------- | ----------- | ----- | ------ |
 | `src/lib/game-engine/*`                   | NEW         | 1     | ✅     |
 | `packages/shared/src/types/game.ts`       | MODIFY      | 1     | ✅     |
-| `src/hooks/useGameEngine.ts`              | NEW         | 2     | ⬜     |
+| `src/hooks/useGameEngine.ts`              | NEW         | 2     | ✅     |
 | `src/components/game/GameCanvas.tsx`      | NEW         | 3     | ⬜     |
 | `src/components/game/GameBoardCasino.tsx` | MODIFY      | 3     | ⬜     |
 | `src/hooks/useAnimationProcessor.ts`      | DELETE      | 4     | ⬜     |
