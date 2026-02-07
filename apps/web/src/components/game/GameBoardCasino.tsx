@@ -85,6 +85,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     showingResult,
     lastGameResult,
     clearLastResult,
+    isEventConnected,
     refetch: refetchGame,
   } = useGameState(wallet.address as `0x${string}` | null);
 
@@ -352,6 +353,13 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
         />
       )}
 
+      {/* WebSocket disconnection banner */}
+      {wallet.isConnected && !isEventConnected && hasActiveGame && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-600/90 text-white text-center py-2 px-4 text-sm animate-pulse">
+          Connection lost — reconnecting...
+        </div>
+      )}
+
       <main className="max-w-6xl mx-auto p-2 sm:p-4 py-4 sm:py-8">
         {/* Game Area */}
         <div className="space-y-4 sm:space-y-6 md:space-y-8">
@@ -533,6 +541,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
           payout={lastGameResult.payout ? formatBetDisplay(lastGameResult.payout) : undefined}
           tokenSymbol={tokenSymbol}
           xpEarned={xpPopup?.xp}
+          quickBets={quickBets}
           onPlayAgain={(newBet) => {
             // Double-click guard: only allow from showing_result phase
             const currentPhase = useGameStore.getState().gamePhase;

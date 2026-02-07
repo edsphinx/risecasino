@@ -320,6 +320,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
             m.useSessionStore.getState()
           );
           clearSession();
+          setError('Session expired — please sign again');
         }
 
         // Use a simple heuristic: if it's "User rejected" don't retry with passkey immediately
