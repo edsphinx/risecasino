@@ -306,34 +306,46 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   // Universal action poller: When in ANY phase expecting on-chain changes,
   // poll contract state to catch updates even if WebSocket events are missed.
   // Covers: initial deal (VRF), Hit/Double (VRF), Stand/Surrender (dealer turn).
-  // Rise Chain WebSocket events are unreliable, so polling is the primary safety net.
+  //
+  // SAFETY: Hard-capped at MAX_POLLS to prevent runaway requests.
+  // Uses a ref counter so the limit persists across effect re-runs.
+  const pollCountRef = useRef(0);
+  const MAX_POLLS = 15; // 15 polls × 2s = 30s max polling time
+  const POLL_INTERVAL_MS = 2000;
+
   useEffect(() => {
-    if (
-      gamePhase !== 'waiting_vrf' &&
-      gamePhase !== 'dealer_reveal' &&
-      gamePhase !== 'dealing_initial' &&
-      gamePhase !== 'dealer_hitting'
-    )
+    const isPollingPhase =
+      gamePhase === 'waiting_vrf' ||
+      gamePhase === 'dealer_reveal' ||
+      gamePhase === 'dealing_initial' ||
+      gamePhase === 'dealer_hitting';
+
+    if (!isPollingPhase) {
+      // Reset counter when we exit a polling phase (game resolved, player_turn, idle, etc.)
+      pollCountRef.current = 0;
       return;
+    }
 
-    logger.log(`[GameStateCasino] Action poller started for phase: ${gamePhase}`);
+    // Already exhausted polls for this action cycle
+    if (pollCountRef.current >= MAX_POLLS) {
+      logger.warn(
+        `[GameStateCasino] Action poller exhausted (${MAX_POLLS} polls). Phase still: ${gamePhase}`
+      );
+      return;
+    }
 
-    // Quick first poll at 500ms (catches fast actions like Stand where game resolves instantly)
-    const quickTimer = setTimeout(() => {
-      const phase = useGameStore.getState().gamePhase;
-      if (
-        phase === 'waiting_vrf' ||
-        phase === 'dealer_reveal' ||
-        phase === 'dealing_initial' ||
-        phase === 'dealer_hitting'
-      ) {
-        logger.log(`[GameStateCasino] Action poll (quick, phase: ${phase})`);
-        serviceRef.current.refetch();
-      }
-    }, 500);
+    logger.log(
+      `[GameStateCasino] Action poller started for phase: ${gamePhase} (poll ${pollCountRef.current}/${MAX_POLLS})`
+    );
 
-    // Then poll every 2s until phase changes to a non-polling phase
+    // Single poll after 1s delay, then repeat every 2s — all with hard cap
     const interval = setInterval(() => {
+      if (pollCountRef.current >= MAX_POLLS) {
+        logger.warn(`[GameStateCasino] Action poller hit max (${MAX_POLLS}), stopping`);
+        clearInterval(interval);
+        return;
+      }
+
       const phase = useGameStore.getState().gamePhase;
       if (
         phase !== 'waiting_vrf' &&
@@ -345,12 +357,15 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         clearInterval(interval);
         return;
       }
-      logger.log(`[GameStateCasino] Action poll (2s, phase: ${phase})`);
+
+      pollCountRef.current++;
+      logger.log(
+        `[GameStateCasino] Action poll #${pollCountRef.current}/${MAX_POLLS} (phase: ${phase})`
+      );
       serviceRef.current.refetch();
-    }, 2000);
+    }, POLL_INTERVAL_MS);
 
     return () => {
-      clearTimeout(quickTimer);
       clearInterval(interval);
     };
   }, [gamePhase]);
