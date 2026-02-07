@@ -166,8 +166,16 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     // This happens when game resolved (bust/win) but we missed the GameResolved event.
     // Contract deletes the game struct, so refetch returns empty.
     if (!game || game.playerCards.length === 0) {
-      if (currentPhase === 'waiting_vrf' && ssotCards.playerCards.length > 0) {
-        logger.log('[HYDRATION] Game vanished on-chain during waiting_vrf — resetting to idle');
+      if (
+        (currentPhase === 'waiting_vrf' ||
+          currentPhase === 'dealing_initial' ||
+          currentPhase === 'dealer_reveal' ||
+          currentPhase === 'dealer_hitting') &&
+        ssotCards.playerCards.length > 0
+      ) {
+        logger.log(`[HYDRATION] Game vanished on-chain during ${currentPhase} — resetting to idle`);
+        // Dispatch balance event so wallet refreshes (game payout already processed)
+        window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
         useGameStore.getState().resetAnimationState();
         useGameStore.getState().clearGameCards();
       }
@@ -180,8 +188,73 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     const gameKey = `${game.playerCards.join(',')}-${game.dealerCards.join(',')}`;
     if (lastHydratedGameRef.current === gameKey) return;
 
-    // Only hydrate from idle (page reload) or waiting_vrf (missed WebSocket events)
-    if (currentPhase !== 'idle' && currentPhase !== 'waiting_vrf') {
+    const gameState = game.state;
+
+    // CASE D: Game resolved on-chain (final state) while we're in a waiting phase.
+    // This happens when Stand/Double/bust resolves and WebSocket missed events.
+    // Build the result from contract data so the UI can show the outcome.
+    if (
+      isFinalState(gameState) &&
+      (currentPhase === 'dealer_reveal' ||
+        currentPhase === 'dealer_hitting' ||
+        currentPhase === 'waiting_vrf')
+    ) {
+      logger.log(
+        '[HYDRATION] Game resolved on-chain, building result. State:',
+        gameState,
+        'Phase:',
+        currentPhase
+      );
+
+      const stateToResult: Record<number, GameResult> = {
+        [PLAYER_WIN]: 'win',
+        [DEALER_WIN]: 'lose',
+        [PUSH]: 'push',
+        [PLAYER_BLACKJACK]: 'blackjack',
+      };
+      const result = stateToResult[gameState] ?? 'lose';
+
+      // Estimate payout from result + bet (exact payout requires GamePlayed event)
+      let payout = 0n;
+      if (result === 'win') payout = game.bet * 2n;
+      else if (result === 'blackjack') payout = (game.bet * 5n) / 2n;
+      else if (result === 'push') payout = game.bet;
+
+      const playerCards = [...game.playerCards];
+      const dealerCards = [...game.dealerCards];
+      const playerValue = calculateLocalHandValue(playerCards);
+      const dealerValue = calculateLocalHandValue(dealerCards);
+
+      // Hydrate all cards instantly (fully revealed) then show result
+      hydrateFromContract(playerCards, dealerCards, 'dealer_reveal');
+      flipHiddenCard();
+
+      // Slight delay so card display updates before result overlay appears
+      setTimeout(() => {
+        setLastGameResult({
+          result,
+          payout,
+          playerValue,
+          dealerValue,
+          playerCards,
+          dealerCards,
+          bet: game.bet,
+        });
+        window.dispatchEvent(new CustomEvent('vyrejack:gameResolved'));
+        // Refetch after overlay to catch balance/cleanup
+        setTimeout(() => serviceRef.current.refetch(), 5000);
+      }, 300);
+
+      lastHydratedGameRef.current = gameKey;
+      return;
+    }
+
+    // Hydrate from phases where we expect contract state to have progressed
+    if (
+      currentPhase !== 'idle' &&
+      currentPhase !== 'waiting_vrf' &&
+      currentPhase !== 'dealing_initial'
+    ) {
       return;
     }
 
@@ -189,15 +262,18 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     const ssotPlayerCount = ssotCards.playerCards.length;
 
     // CASE B (idle): Page reload — only hydrate if SSOT is empty
-    // CASE C (waiting_vrf): Missed events — hydrate if SSOT empty OR contract has more cards (HIT)
+    // CASE C (waiting_vrf/dealing_initial): Missed events — hydrate if SSOT empty
+    //   OR contract has more cards than SSOT (new cards from HIT/deal)
     const needsHydration =
       currentPhase === 'idle'
         ? contractHasCards && ssotPlayerCount === 0 && !hasHydratedThisSession.current
-        : contractHasCards && (ssotPlayerCount === 0 || game.playerCards.length > ssotPlayerCount);
+        : contractHasCards &&
+          (ssotPlayerCount === 0 ||
+            game.playerCards.length > ssotPlayerCount ||
+            game.dealerCards.length > ssotCards.dealerCards.length);
 
     if (!needsHydration) return;
 
-    const gameState = game.state;
     const isGameActive = gameState !== IDLE && gameState !== undefined && !isFinalState(gameState);
     if (!isGameActive) {
       logger.log('[HYDRATION] Skipping - game not active, state:', gameState);
@@ -227,26 +303,55 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     lastHydratedGameRef.current = gameKey;
   }, [service.game, hydrateFromContract]);
 
-  // Safety net: When waiting_vrf and WebSocket misses events,
-  // schedule delayed refetches to catch VRF fulfillment.
-  // Covers BOTH initial deal (empty SSOT) and HIT (SSOT has cards but contract progressed).
-  // Uses two timers: 3s for fast VRF, 8s for slow VRF (Rise testnet can take >2min).
+  // Universal action poller: When in ANY phase expecting on-chain changes,
+  // poll contract state to catch updates even if WebSocket events are missed.
+  // Covers: initial deal (VRF), Hit/Double (VRF), Stand/Surrender (dealer turn).
+  // Rise Chain WebSocket events are unreliable, so polling is the primary safety net.
   useEffect(() => {
-    if (gamePhase !== 'waiting_vrf') return;
+    if (
+      gamePhase !== 'waiting_vrf' &&
+      gamePhase !== 'dealer_reveal' &&
+      gamePhase !== 'dealing_initial' &&
+      gamePhase !== 'dealer_hitting'
+    )
+      return;
 
-    const refetchIfStillWaiting = (label: string) => {
-      const currentPhase = useGameStore.getState().gamePhase;
-      if (currentPhase !== 'waiting_vrf') return;
-      logger.log(`[GameStateCasino] VRF safety net (${label}): refetching`);
+    logger.log(`[GameStateCasino] Action poller started for phase: ${gamePhase}`);
+
+    // Quick first poll at 500ms (catches fast actions like Stand where game resolves instantly)
+    const quickTimer = setTimeout(() => {
+      const phase = useGameStore.getState().gamePhase;
+      if (
+        phase === 'waiting_vrf' ||
+        phase === 'dealer_reveal' ||
+        phase === 'dealing_initial' ||
+        phase === 'dealer_hitting'
+      ) {
+        logger.log(`[GameStateCasino] Action poll (quick, phase: ${phase})`);
+        serviceRef.current.refetch();
+      }
+    }, 500);
+
+    // Then poll every 2s until phase changes to a non-polling phase
+    const interval = setInterval(() => {
+      const phase = useGameStore.getState().gamePhase;
+      if (
+        phase !== 'waiting_vrf' &&
+        phase !== 'dealer_reveal' &&
+        phase !== 'dealing_initial' &&
+        phase !== 'dealer_hitting'
+      ) {
+        logger.log(`[GameStateCasino] Action poller stopping, phase: ${phase}`);
+        clearInterval(interval);
+        return;
+      }
+      logger.log(`[GameStateCasino] Action poll (2s, phase: ${phase})`);
       serviceRef.current.refetch();
-    };
-
-    const timer1 = setTimeout(() => refetchIfStillWaiting('3s'), 3000);
-    const timer2 = setTimeout(() => refetchIfStillWaiting('8s'), 8000);
+    }, 2000);
 
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      clearTimeout(quickTimer);
+      clearInterval(interval);
     };
   }, [gamePhase]);
 
