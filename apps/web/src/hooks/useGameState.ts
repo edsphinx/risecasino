@@ -19,7 +19,12 @@
 
 import { useCallback, useRef, useMemo, useEffect } from 'preact/hooks';
 import { useGameService } from './useGameService';
-import { useGameStore, selectLastGameResult, selectShowingResult } from '@/stores/gameStore';
+import {
+  useGameStore,
+  selectLastGameResult,
+  selectShowingResult,
+  selectGamePhase,
+} from '@/stores/gameStore';
 import { useGameEvents, type GameResolvedEvent, type CardDealtEvent } from './useGameEvents';
 import { logger } from '@/lib/logger';
 import type { VyreJackGame, GameResult } from '@vyrejack/shared';
@@ -133,10 +138,12 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     setLastGameResult,
     // SSOT actions
     addGameCard,
-    revealNextCard,
     flipHiddenCard,
     hydrateFromContract,
   } = useGameStore();
+
+  // Subscribe to gamePhase for safety-net refetch logic
+  const gamePhase = useGameStore(selectGamePhase);
 
   const serviceRef = useRef(service);
   serviceRef.current = service;
@@ -152,76 +159,142 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
 
   useEffect(() => {
     const game = service.game;
+    const currentPhase = useGameStore.getState().gamePhase;
+    const ssotCards = useGameStore.getState().gameCards;
 
-    // Reset tracking when game ends
+    // CASE A: Game vanished on-chain while frontend was in an active phase.
+    // This happens when game resolved (bust/win) but we missed the GameResolved event.
+    // Contract deletes the game struct, so refetch returns empty.
     if (!game || game.playerCards.length === 0) {
+      if (currentPhase === 'waiting_vrf' && ssotCards.playerCards.length > 0) {
+        logger.log('[HYDRATION] Game vanished on-chain during waiting_vrf — resetting to idle');
+        useGameStore.getState().resetAnimationState();
+        useGameStore.getState().clearGameCards();
+      }
       lastHydratedGameRef.current = null;
       hasHydratedThisSession.current = false;
       return;
     }
 
+    // Dedup: skip if we already hydrated this exact card set
     const gameKey = `${game.playerCards.join(',')}-${game.dealerCards.join(',')}`;
-
     if (lastHydratedGameRef.current === gameKey) return;
 
-    // Only hydrate on PAGE RELOAD when SSOT is empty but contract has cards
-    const ssotState = useGameStore.getState();
-    const ssotHasCards = ssotState.gameCards.playerCards.length > 0;
-    const contractHasCards = game.playerCards.length > 0;
-
-    if (contractHasCards && !ssotHasCards && !hasHydratedThisSession.current) {
-      const currentPhase = useGameStore.getState().gamePhase;
-      if (currentPhase !== 'idle') {
-        logger.log('[HYDRATION] Skipping - gamePhase is:', currentPhase);
-        return;
-      }
-
-      const gameState = game.state;
-      const isGameActive =
-        gameState !== IDLE && gameState !== undefined && !isFinalState(gameState);
-      if (!isGameActive) {
-        logger.log('[HYDRATION] Skipping - game not active, state:', gameState);
-        return;
-      }
-
-      // Derive correct gamePhase from contract state
-      let hydratedPhase: 'player_turn' | 'waiting_vrf' | 'dealer_reveal';
-      if (gameState === PLAYER_TURN) {
-        hydratedPhase = 'player_turn';
-      } else if (
-        gameState === WAITING_VRF ||
-        gameState === WAITING_HIT_VRF ||
-        gameState === WAITING_DOUBLE_VRF
-      ) {
-        hydratedPhase = 'waiting_vrf';
-      } else {
-        hydratedPhase = 'dealer_reveal';
-      }
-
-      logger.log('[HYDRATION] Batch hydrating SSOT from contract:', game, 'phase:', hydratedPhase);
-      hasHydratedThisSession.current = true;
-
-      // Single set() call — no orchestrator thrash
-      hydrateFromContract([...game.playerCards], [...game.dealerCards], hydratedPhase);
-
-      lastHydratedGameRef.current = gameKey;
+    // Only hydrate from idle (page reload) or waiting_vrf (missed WebSocket events)
+    if (currentPhase !== 'idle' && currentPhase !== 'waiting_vrf') {
+      return;
     }
+
+    const contractHasCards = game.playerCards.length > 0;
+    const ssotPlayerCount = ssotCards.playerCards.length;
+
+    // CASE B (idle): Page reload — only hydrate if SSOT is empty
+    // CASE C (waiting_vrf): Missed events — hydrate if SSOT empty OR contract has more cards (HIT)
+    const needsHydration =
+      currentPhase === 'idle'
+        ? contractHasCards && ssotPlayerCount === 0 && !hasHydratedThisSession.current
+        : contractHasCards && (ssotPlayerCount === 0 || game.playerCards.length > ssotPlayerCount);
+
+    if (!needsHydration) return;
+
+    const gameState = game.state;
+    const isGameActive = gameState !== IDLE && gameState !== undefined && !isFinalState(gameState);
+    if (!isGameActive) {
+      logger.log('[HYDRATION] Skipping - game not active, state:', gameState);
+      return;
+    }
+
+    // Derive correct gamePhase from contract state
+    let hydratedPhase: 'player_turn' | 'waiting_vrf' | 'dealer_reveal';
+    if (gameState === PLAYER_TURN) {
+      hydratedPhase = 'player_turn';
+    } else if (
+      gameState === WAITING_VRF ||
+      gameState === WAITING_HIT_VRF ||
+      gameState === WAITING_DOUBLE_VRF
+    ) {
+      hydratedPhase = 'waiting_vrf';
+    } else {
+      hydratedPhase = 'dealer_reveal';
+    }
+
+    logger.log('[HYDRATION] Batch hydrating SSOT from contract:', game, 'phase:', hydratedPhase);
+    hasHydratedThisSession.current = true;
+
+    // Single set() call — no orchestrator thrash
+    hydrateFromContract([...game.playerCards], [...game.dealerCards], hydratedPhase);
+
+    lastHydratedGameRef.current = gameKey;
   }, [service.game, hydrateFromContract]);
+
+  // Safety net: When waiting_vrf and WebSocket misses events,
+  // schedule delayed refetches to catch VRF fulfillment.
+  // Covers BOTH initial deal (empty SSOT) and HIT (SSOT has cards but contract progressed).
+  // Uses two timers: 3s for fast VRF, 8s for slow VRF (Rise testnet can take >2min).
+  useEffect(() => {
+    if (gamePhase !== 'waiting_vrf') return;
+
+    const refetchIfStillWaiting = (label: string) => {
+      const currentPhase = useGameStore.getState().gamePhase;
+      if (currentPhase !== 'waiting_vrf') return;
+      logger.log(`[GameStateCasino] VRF safety net (${label}): refetching`);
+      serviceRef.current.refetch();
+    };
+
+    const timer1 = setTimeout(() => refetchIfStillWaiting('3s'), 3000);
+    const timer2 = setTimeout(() => refetchIfStillWaiting('8s'), 8000);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [gamePhase]);
 
   // Handle CardDealt event - populate SSOT
   const handleCardDealt = useCallback(
     (event: CardDealtEvent) => {
       logger.log('[GameStateCasino] CardDealt:', event);
 
-      // Phase tracking: transition to dealing_initial on first card
+      const currentGameCards = useGameStore.getState().gameCards;
       const currentPhase = useGameStore.getState().gamePhase;
+
+      // DEDUP: Skip if SSOT was already populated by hydration.
+      // When VRF responds same-block, refetch → hydration fills SSOT before
+      // WebSocket events arrive. These late events would create duplicates.
+      const targetCards = event.isDealer
+        ? currentGameCards.dealerCards
+        : currentGameCards.playerCards;
+      if (
+        currentPhase === 'player_turn' &&
+        targetCards.length >= 2 &&
+        !event.isDealer // Initial deal player cards
+      ) {
+        logger.log(
+          '[GameStateCasino] Skipping stale CardDealt (SSOT already hydrated):',
+          event.card
+        );
+        return;
+      }
+      if (
+        currentPhase === 'player_turn' &&
+        targetCards.length >= 2 &&
+        event.isDealer &&
+        !event.faceUp // Initial deal hidden card
+      ) {
+        logger.log(
+          '[GameStateCasino] Skipping stale dealer CardDealt (SSOT already hydrated):',
+          event.card
+        );
+        return;
+      }
+
+      // Phase tracking: transition to dealing_initial on first card
       if (currentPhase === 'waiting_vrf' || currentPhase === 'idle') {
         setGamePhase('dealing_initial');
       }
 
       // Check if this is the hidden card being revealed (duplicate event)
       // Contract emits CardDealt BOTH when dealing hidden card AND when revealing it
-      const currentGameCards = useGameStore.getState().gameCards;
       const isHiddenCardReveal =
         event.isDealer && event.faceUp && currentGameCards.dealerHiddenCard === event.card;
 
@@ -231,12 +304,11 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         return;
       }
 
-      // Add card and reveal immediately
+      // Add card to SSOT (orchestrator handles reveal timing + phase transition)
       const isHidden = event.isDealer && !event.faceUp;
       addGameCard(event.card, event.isDealer, isHidden);
-      revealNextCard(event.isDealer);
     },
-    [addGameCard, revealNextCard, setGamePhase, flipHiddenCard]
+    [addGameCard, setGamePhase, flipHiddenCard]
   );
 
   // Handle GameResolved event from WebSocket
@@ -308,7 +380,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
           dealerValue,
           playerCards,
           dealerCards,
-          bet: 0n,
+          bet: event.bet,
         });
 
         // Dispatch global event for wallet balance refresh
@@ -341,6 +413,17 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     onGameResolved: handleGameResolved,
     onCardDealt: handleCardDealt,
   });
+
+  // BUG-09 FIX: Refetch on WebSocket reconnection to catch missed events
+  const prevConnectedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // Detect reconnection: was previously connected, disconnected, now reconnected
+    if (isEventConnected && prevConnectedRef.current === false && player) {
+      logger.log('[GameStateCasino] WebSocket reconnected, refetching state');
+      serviceRef.current.refetch();
+    }
+    prevConnectedRef.current = isEventConnected;
+  }, [isEventConnected, player]);
 
   // Derived state
   const isGameEnded = useMemo(() => {
