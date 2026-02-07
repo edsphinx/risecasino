@@ -127,10 +127,16 @@ export const BLACKJACK_ABI = [
 export type BlackjackABI = typeof BLACKJACK_ABI;
 
 // VyreCasino architecture ABIs
-export { VYRECASINO_ABI, type VyreCasinoABI } from './VyreCasino';
-export { VYREJACKCORE_ABI, type VyreJackCoreABI } from './VyreJackCore';
-export { ERC20_ABI, type ERC20ABI } from './ERC20';
-export { CHIP_FAUCET_ABI, type ChipFaucetABI } from './CHIPFaucet';
+export { VYRECASINO_ABI } from './VyreCasino';
+export { VYREJACKCORE_ABI } from './VyreJackCore';
+export { ERC20_ABI } from './ERC20';
+export { CHIP_FAUCET_ABI } from './CHIPFaucet';
+
+// Type exports derived from constants
+export type VyreCasinoABI = typeof import('./VyreCasino').VYRECASINO_ABI;
+export type VyreJackCoreABI = typeof import('./VyreJackCore').VYREJACKCORE_ABI;
+export type ERC20ABI = typeof import('./ERC20').ERC20_ABI;
+export type ChipFaucetABI = typeof import('./CHIPFaucet').CHIP_FAUCET_ABI;
 
 // Legacy alias - use VYREJACKCORE_ABI for new code
 export { VYREJACKCORE_ABI as VYREJACK_ABI } from './VyreJackCore';

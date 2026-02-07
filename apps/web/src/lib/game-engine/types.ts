@@ -13,69 +13,19 @@
 export { GameState } from '@vyrejack/shared';
 export type { HandValue, GameAction, GameResult } from '@vyrejack/shared';
 
+// Game phase and transitions (centralized in shared)
+export type { GamePhase, CardIndex, SuitIndex, Rank, EngineGameResult } from '@vyrejack/shared';
+export { VALID_TRANSITIONS, RESULT_PHASES } from '@vyrejack/shared';
+
 // Re-export cards from shared
 export { Suit, RANK_NAMES, SUIT_SYMBOLS } from '@vyrejack/shared';
 export type { CardDisplay } from '@vyrejack/shared';
 
 // =============================================================================
-// GAME PHASE - String alias for GameState enum (for easier frontend usage)
+// ENGINE-SPECIFIC STATE
 // =============================================================================
 
-export type GamePhase =
-    | 'idle' // GameState.Idle
-    | 'waiting_for_deal' // GameState.WaitingForDeal
-    | 'player_turn' // GameState.PlayerTurn
-    | 'waiting_for_hit' // GameState.WaitingForHit
-    | 'waiting_for_double' // GameState.WaitingForDouble
-    | 'dealer_turn' // GameState.DealerTurn
-    | 'player_win' // GameState.PlayerWin
-    | 'dealer_win' // GameState.DealerWin
-    | 'push' // GameState.Push
-    | 'player_blackjack'; // GameState.PlayerBlackjack
-
-// Valid phase transitions map
-export const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
-    idle: ['waiting_for_deal'],
-    waiting_for_deal: ['player_turn', 'player_blackjack', 'dealer_win', 'push'],
-    player_turn: ['waiting_for_hit', 'waiting_for_double', 'dealer_turn', 'dealer_win'],
-    waiting_for_hit: ['player_turn', 'dealer_win', 'dealer_turn'],
-    waiting_for_double: ['dealer_turn', 'dealer_win'],
-    dealer_turn: ['player_win', 'dealer_win', 'push'],
-    player_win: ['idle'],
-    dealer_win: ['idle'],
-    push: ['idle'],
-    player_blackjack: ['idle'],
-};
-
-// Result phases for determining game outcome
-export const RESULT_PHASES: GamePhase[] = ['player_win', 'dealer_win', 'push', 'player_blackjack'];
-
-// =============================================================================
-// CARD TYPES - Engine specific
-// =============================================================================
-
-/** Card index 0-51 mapping to standard deck */
-export type CardIndex = number;
-
-/** Card suit derived from index: Math.floor(index / 13) */
-export type SuitIndex = 0 | 1 | 2 | 3; // ♠ ♥ ♦ ♣
-
-/** Card rank derived from index: index % 13 */
-export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
-
-// Legacy constant names for backward compatibility
-export const SUIT_NAMES: Record<SuitIndex, string> = {
-    0: '♠',
-    1: '♥',
-    2: '♦',
-    3: '♣',
-};
-
-// =============================================================================
-// GAME STATE - Engine specific state
-// =============================================================================
-
-import type { HandValue } from '@vyrejack/shared';
+import type { HandValue, GamePhase, CardIndex } from '@vyrejack/shared';
 
 export interface EngineGameState {
     phase: GamePhase;
@@ -89,7 +39,7 @@ export interface EngineGameState {
 }
 
 // =============================================================================
-// PLAYER ACTIONS - Using GameAction from shared
+// PLAYER ACTIONS - Engine specific event
 // =============================================================================
 
 export type PlayerAction = 'hit' | 'stand' | 'double' | 'surrender';
