@@ -23,6 +23,7 @@ const WSS_URL = 'wss://testnet.riselabs.xyz/ws';
 export interface GameResolvedEvent {
   result: GameResult;
   payout: bigint;
+  bet: bigint;
   playerFinalValue: number;
   dealerFinalValue: number;
 }
@@ -75,6 +76,13 @@ export function useGameEvents(
 
   // Deduplication: track processed events by txHash+logIndex
   const processedEvents = useRef<Set<string>>(new Set());
+
+  // BUG-10 FIX: Buffer GameResolved hand values keyed by txHash.
+  // GameResolved and GamePlayed fire in the same tx, but arrive via separate watchers.
+  // Whichever arrives first buffers its data; the second merges.
+  const resolvedValuesRef = useRef<
+    Map<string, { playerFinalValue: number; dealerFinalValue: number }>
+  >(new Map());
 
   // Stable callback refs
   const callbacksRef = useRef(callbacks);
@@ -150,13 +158,19 @@ export function useGameEvents(
               payout: args.payout.toString(),
             });
 
-            // Note: playerFinalValue and dealerFinalValue are not in GamePlayed event
-            // They will be calculated from accumulated CardDealt events in useGameStateCasino
+            // Merge with GameResolved hand values if available (same tx)
+            const txHash = log.transactionHash ?? '';
+            const resolvedValues = resolvedValuesRef.current.get(txHash);
+            if (resolvedValues) {
+              resolvedValuesRef.current.delete(txHash);
+            }
+
             callbacksRef.current.onGameResolved({
               result: gameResult,
               payout: args.payout,
-              playerFinalValue: 0, // Will be filled from card accumulation
-              dealerFinalValue: 0, // Will be filled from card accumulation
+              bet: args.bet,
+              playerFinalValue: resolvedValues?.playerFinalValue ?? 0,
+              dealerFinalValue: resolvedValues?.dealerFinalValue ?? 0,
             });
           }
         },
@@ -165,6 +179,49 @@ export function useGameEvents(
         },
       });
       unwatchRefs.current.push(unwatchGamePlayed);
+
+      // BUG-10 FIX: Watch for GameResolved events (authoritative hand values)
+      // GameResolved fires in the same tx as GamePlayed but has playerFinalValue + dealerFinalValue.
+      // Buffer the values so GamePlayed handler can merge them.
+      const unwatchGameResolved = client.watchContractEvent({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        eventName: 'GameResolved',
+        args: {
+          player: playerAddress,
+        },
+        onLogs: (logs) => {
+          for (const log of logs) {
+            const args = log.args as {
+              player: `0x${string}`;
+              result: number;
+              payout: bigint;
+              playerFinalValue: number;
+              dealerFinalValue: number;
+            };
+
+            const txHash = log.transactionHash ?? '';
+            logger.log('[GameEventsCasino] GameResolved:', {
+              playerFinalValue: args.playerFinalValue,
+              dealerFinalValue: args.dealerFinalValue,
+              txHash: txHash.slice(0, 10),
+            });
+
+            // Buffer for GamePlayed handler to pick up
+            resolvedValuesRef.current.set(txHash, {
+              playerFinalValue: args.playerFinalValue,
+              dealerFinalValue: args.dealerFinalValue,
+            });
+
+            // Auto-cleanup buffer after 5s (in case GamePlayed was already processed)
+            setTimeout(() => resolvedValuesRef.current.delete(txHash), 5000);
+          }
+        },
+        onError: (error) => {
+          logger.error('[GameEventsCasino] GameResolved error:', error);
+        },
+      });
+      unwatchRefs.current.push(unwatchGameResolved);
 
       // Watch for CardDealt events
       const unwatchCardDealt = client.watchContractEvent({
@@ -346,7 +403,7 @@ export function useGameEvents(
       unwatchRefs.current.push(unwatchRandomnessSource);
 
       setIsConnected(true);
-      logger.log('[GameEventsCasino] WebSocket connected - listening to 7 event types (V8)');
+      logger.log('[GameEventsCasino] WebSocket connected - listening to 8 event types (V8+)');
     } catch (error) {
       logger.error('[GameEventsCasino] Failed to start WebSocket:', error);
       setIsConnected(false);

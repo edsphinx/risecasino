@@ -417,6 +417,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         const balanceState = await TokenService.getBalance(token, address);
         if (balanceState.raw < betWei) {
           const formattedBalance = formatUnits(balanceState.raw, decimals);
+          useGameStore.getState().setGamePhase('idle');
           setError(
             `Insufficient balance. You have ${parseFloat(formattedBalance).toFixed(2)} ${isUSDC ? 'USDC' : 'CHIP'} but tried to bet ${betAmount}`
           );
@@ -431,7 +432,10 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           logger.log('[VyreCasino] Insufficient allowance, requesting passkey approval...');
           // Approval uses PASSKEY (eth_sendTransaction) - session key approve doesn't work with V6
           const approved = await approveToken(token, maxUint256);
-          if (!approved) return false;
+          if (!approved) {
+            useGameStore.getState().setGamePhase('idle');
+            return false;
+          }
         }
 
         // Step 3: Call VyreCasino.play()
@@ -446,17 +450,16 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           ],
         });
 
+        // ⚡ PHASE TRACKING: Set waiting_vrf BEFORE send so CardDealt events
+        // (which arrive during the await) see the correct starting phase
+        useGameStore.getState().setGamePhase('waiting_vrf');
+
         const txHash = await sendTransaction(VYRECASINO_ADDRESS, 0n, data);
         if (!txHash) {
+          useGameStore.getState().setGamePhase('idle');
           setError('Transaction failed');
           return false;
         }
-
-        // Note: clearGameCards() is called in handlePlaceBet BEFORE this action runs
-        // Do NOT call it here - CardDealt events will have already populated SSOT
-
-        // ⚡ PHASE TRACKING: Set waiting_vrf phase for riffle shuffle animation
-        useGameStore.getState().setGamePhase('waiting_vrf');
 
         logger.log('[VyreCasino] Play TX:', txHash);
         logEvent('game_start', address, { betAmount, token, game: 'VyreJack' }).catch(() => {});
@@ -466,6 +469,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         return true;
       } catch (err) {
         logger.error('[VyreCasino] placeBet error:', err);
+        useGameStore.getState().setGamePhase('idle');
         setError(ErrorService.getSafeMessage(err));
         return false;
       } finally {
@@ -491,15 +495,20 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
           functionName: action,
         });
 
-        const txHash = await sendTransaction(VYREJACKCORE_ADDRESS, 0n, data);
-        if (!txHash) {
-          setError('Action failed');
-          return false;
+        // ⚡ PHASE TRACKING: Set phase BEFORE send so events arriving during
+        // the await see the correct starting phase, and buttons hide immediately
+        if (action === 'hit' || action === 'double') {
+          useGameStore.getState().setGamePhase('waiting_vrf');
+        } else if (action === 'stand' || action === 'surrender') {
+          useGameStore.getState().setGamePhase('dealer_reveal');
         }
 
-        // ⚡ PHASE TRACKING: Set waiting_hit phase if hit action
-        if (action === 'hit') {
-          useGameStore.getState().setGamePhase('waiting_vrf');
+        const txHash = await sendTransaction(VYREJACKCORE_ADDRESS, 0n, data);
+        if (!txHash) {
+          // Revert phase on failure
+          useGameStore.getState().setGamePhase('player_turn');
+          setError('Action failed');
+          return false;
         }
 
         logger.log(`[VyreCasino] ${action} TX:`, txHash);
@@ -510,6 +519,8 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         return true;
       } catch (err) {
         logger.error(`[VyreCasino] ${action} error:`, err);
+        // Revert phase on error so UI doesn't get stuck
+        useGameStore.getState().setGamePhase('player_turn');
         setError(ErrorService.getSafeMessage(err));
         return false;
       } finally {

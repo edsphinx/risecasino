@@ -30,6 +30,7 @@ import { SkeletonHand } from './SkeletonHand';
 import { MobileHistory } from './MobileHistory';
 import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
+import { VRFWaitingOverlay } from './VRFWaitingOverlay';
 import { StorageService } from '@/services/storage.service';
 import { logger } from '@/lib/logger';
 
@@ -470,14 +471,29 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
               {wallet.isConnected ? (
                 showingResult ? (
                   <div className="space-y-4">
-                    <button onClick={handleNewGame} className="deal-btn w-full">
+                    <button
+                      onClick={() => {
+                        clearLastResult();
+                        resetAnimationState();
+                        clearGameCards();
+                        setGamePhase('waiting_vrf');
+                        actions.placeBet(betAmount, token);
+                      }}
+                      className="deal-btn w-full"
+                    >
                       <span className="deal-btn-content">
                         <span className="deal-btn-emoji">🎰</span>
                         PLAY AGAIN
                       </span>
                     </button>
+                    <button
+                      onClick={handleNewGame}
+                      className="text-sm text-gray-400 hover:text-gray-200 underline w-full"
+                    >
+                      Change bet
+                    </button>
                   </div>
-                ) : hasActiveGame && isPlayerTurn ? (
+                ) : gamePhase === 'player_turn' || (hasActiveGame && isPlayerTurn) ? (
                   <ActionButtons
                     onHit={handleHit}
                     onStand={handleStand}
@@ -487,9 +503,23 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     canSurrender={game?.playerCards.length === 2}
                     isLoading={actions.isLoading}
                   />
+                ) : gamePhase === 'waiting_vrf' ? (
+                  <VRFWaitingOverlay
+                    gameTimestamp={game?.timestamp ?? 0n}
+                    onCancel={async () => {
+                      const ok = await actions.retryVRF();
+                      if (ok) refetchGame();
+                      return ok;
+                    }}
+                    isLoading={actions.isLoading}
+                  />
                 ) : isWaitingDealer ? (
                   <div className="text-center py-4">
-                    <p className="text-yellow-400 animate-pulse">⏳ Waiting for dealer...</p>
+                    <p className="text-yellow-400 animate-pulse">
+                      {gamePhase === 'dealing_initial'
+                        ? '🃏 Dealing cards...'
+                        : '⏳ Waiting for dealer...'}
+                    </p>
                   </div>
                 ) : (
                   <BettingPanel
