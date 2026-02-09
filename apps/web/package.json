@@ -22,7 +22,7 @@
     "ox": "0.9.8",
     "preact": "^10.25.4",
     "rise-wallet": "0.3.5",
-    "shreds": "^0.2.3",
+    "shreds": "^0.3.0",
     "viem": "^2.21.54",
     "wouter-preact": "^3.9.0",
     "zustand": "^5.0.10"
