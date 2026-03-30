@@ -19,7 +19,7 @@
   "dependencies": {
     "@vyrejack/shared": "workspace:*",
     "gsap": "^3.14.2",
-    "ox": "0.9.8",
+    "ox": "0.14.10",
     "preact": "^10.25.4",
     "rise-wallet": "0.3.5",
     "shreds": "^0.2.3",
@@ -45,6 +45,6 @@
     "vitest": "^2.1.9"
   },
   "overrides": {
-    "ox": "0.9.8"
+    "ox": "0.14.10"
   }
 }
