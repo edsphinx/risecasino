@@ -32,7 +32,10 @@ import { GameHistory } from './GameHistory';
 import { ErrorToast } from './ErrorToast';
 import { VRFWaitingOverlay } from './VRFWaitingOverlay';
 import { StorageService } from '@/services/storage.service';
+import { GameService } from '@/services/game.service';
+import { validateBetAmount } from '@/lib/validateBet';
 import { logger } from '@/lib/logger';
+import type { BetLimits } from '@vyrejack/shared';
 
 interface GameBoardCasinoProps {
   token: `0x${string}`;
@@ -73,10 +76,27 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
 
   // Token balance hook
   const {
+    balance,
     formattedBalance,
     isApproved,
     refresh: refreshBalance,
   } = useTokenBalance(token, wallet.address as `0x${string}` | null);
+
+  // On-chain bet limits (minBet/maxBet) for the active token. Loaded lazily;
+  // null while pending so we never block the user on the read.
+  const [betLimits, setBetLimits] = useState<BetLimits | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setBetLimits(null);
+    GameService.getBetLimits(token)
+      .then((limits) => {
+        if (!cancelled) setBetLimits(limits);
+      })
+      .catch((err) => logger.warn('[GameBoardCasino] Failed to load bet limits:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Game state hook - WebSocket events + SSOT management
   const {
@@ -143,14 +163,26 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     return ['10', '50', '100', '500', '1000'];
   }, [tokenSymbol]);
 
-  // Determine if can bet (idle phase, not loading, no active game)
+  // Client-side bet validation: catch out-of-range / unaffordable bets before
+  // signing a tx that would revert on-chain. Mirrors VyreJackCore's minBet/maxBet.
+  const betDecimals = balance?.decimals ?? (tokenSymbol === 'USDC' ? 6 : 18);
+  const betError = validateBetAmount(
+    betAmount,
+    betLimits,
+    balance?.raw ?? 0n,
+    betDecimals,
+    tokenSymbol
+  );
+
+  // Determine if can bet (idle phase, not loading, no active game, valid bet)
   const canBet =
     isActiveTab &&
     wallet.isConnected &&
     !actions.isLoading &&
     !hasActiveGame &&
     !showingResult &&
-    gamePhase === 'idle';
+    gamePhase === 'idle' &&
+    !betError;
 
   // Game actions
   const handlePlaceBet = useCallback(() => {
@@ -529,6 +561,7 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
                     isApproved={isApproved}
                     isLoading={actions.isLoading}
                     canBet={canBet}
+                    betError={betError}
                     onBetAmountChange={setBetAmount}
                     onPlaceBet={handlePlaceBet}
                     quickBets={quickBets}

@@ -11,7 +11,6 @@
  * - Balance display
  */
 
-
 export interface BettingPanelProps {
   // State
   betAmount: string;
@@ -20,6 +19,8 @@ export interface BettingPanelProps {
   isApproved: boolean;
   isLoading: boolean;
   canBet: boolean;
+  /** Client-side validation error for the current bet, or null if valid. */
+  betError?: string | null;
 
   // Callbacks
   onBetAmountChange: (amount: string) => void;
@@ -36,6 +37,7 @@ export function BettingPanel({
   isApproved,
   isLoading,
   canBet,
+  betError,
   onBetAmountChange,
   onPlaceBet,
   quickBets = ['10', '50', '100', '500', '1000'],
@@ -50,12 +52,24 @@ export function BettingPanel({
           onChange={(e) => onBetAmountChange((e.target as HTMLInputElement).value)}
           min="1"
           step="1"
-          className="flex-1 px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white text-lg font-mono focus:border-purple-500 focus:outline-none"
+          aria-invalid={betError ? true : undefined}
+          className={`flex-1 px-4 py-3 bg-slate-900 border rounded-lg text-white text-lg font-mono focus:outline-none ${
+            betError
+              ? 'border-red-500 focus:border-red-500'
+              : 'border-slate-600 focus:border-purple-500'
+          }`}
           placeholder="Bet amount"
           disabled={isLoading}
         />
         <span className="text-slate-400">{tokenSymbol}</span>
       </div>
+
+      {/* Validation error */}
+      {betError && (
+        <p className="text-xs text-red-400 text-center -mt-1" role="alert">
+          {betError}
+        </p>
+      )}
 
       {/* Quick Bet Buttons */}
       <div className="quick-bet-container">
