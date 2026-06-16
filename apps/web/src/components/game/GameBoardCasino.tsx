@@ -131,13 +131,23 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
     },
   });
 
-  // Trigger XP popup when game result shows (win/blackjack = more XP)
-  // Also save to game history
-  const prevShowingResultRef = useRef(showingResult);
-  if (showingResult && !prevShowingResultRef.current && lastGameResult) {
+  // Trigger XP popup + save history exactly once when a game result is shown.
+  // This MUST be an effect (post-commit), not a render-body side effect: doing
+  // it in render fired twice under double-render (StrictMode/concurrent) →
+  // duplicate XP popups and duplicate history entries. The ref guard makes it
+  // fire once per "showing result" episode and resets when the overlay hides.
+  const firedForResultRef = useRef(false);
+  useEffect(() => {
+    if (!showingResult) {
+      firedForResultRef.current = false;
+      return;
+    }
+    if (firedForResultRef.current || !lastGameResult) return;
+    firedForResultRef.current = true;
+
     const xpAmount =
       lastGameResult.result === 'blackjack' ? 100 : lastGameResult.result === 'win' ? 50 : 25;
-    setTimeout(() => showXPPopup(xpAmount), 500);
+    const timer = setTimeout(() => showXPPopup(xpAmount), 500);
 
     if (lastGameResult.result) {
       StorageService.addGameToHistory({
@@ -152,8 +162,9 @@ export function GameBoardCasino({ token, tokenSymbol, tokenContext }: GameBoardC
         dealerValue: lastGameResult.dealerValue,
       });
     }
-  }
-  prevShowingResultRef.current = showingResult;
+
+    return () => clearTimeout(timer);
+  }, [showingResult, lastGameResult, showXPPopup, betAmount, tokenSymbol]);
 
   // Quick bet amounts based on token
   const quickBets = useMemo(() => {
