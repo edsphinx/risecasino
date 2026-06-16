@@ -104,6 +104,34 @@ contract MockCasino {
         lastSettleToken = token;
         lastSettleAmount = amount;
     }
+
+    // Track collectBet (double-down second stake)
+    uint256 public lastCollectAmount;
+    address public lastCollectPlayer;
+    address public lastCollectToken;
+
+    function collectBet(
+        address player,
+        address token,
+        uint256 amount
+    ) external {
+        lastCollectPlayer = player;
+        lastCollectToken = token;
+        lastCollectAmount = amount;
+    }
+
+    // Track refundBet (stuck-game refund)
+    uint256 public lastRefundAmount;
+    address public lastRefundPlayer;
+
+    function refundBet(
+        address player,
+        address,
+        uint256 amount
+    ) external {
+        lastRefundPlayer = player;
+        lastRefundAmount = amount;
+    }
 }
 
 /**
@@ -696,6 +724,76 @@ contract VyreJackCoreTest is Test {
         // Either dealer draws or game resolves
         (address token,,,,) = game.getGame(player1);
         assertTrue(token == address(0) || token != address(0)); // Just check no revert
+    }
+
+    function test_double_collectsSecondStake() public {
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5; // Player: 6
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 4; // Player: 5 => 11 (PlayerTurn)
+        cards[3] = 2; // Dealer: 3 => 8
+        vrf.fulfill(reqId, cards);
+
+        vm.prank(player1);
+        game.double();
+
+        // The second stake must be pulled into escrow (it was free before the fix).
+        assertEq(casino.lastCollectPlayer(), player1, "collected from player");
+        assertEq(casino.lastCollectToken(), chipToken, "collected the bet token");
+        assertEq(casino.lastCollectAmount(), 100e18, "second stake == original bet");
+    }
+
+    function test_claimTimeoutRefund_doubledGame_refundsEffectiveBet() public {
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 5;
+        cards[1] = 4;
+        cards[2] = 4; // Player 11 -> PlayerTurn
+        cards[3] = 2;
+        vrf.fulfill(reqId, cards);
+
+        vm.prank(player1);
+        game.double(); // WaitingForDouble, 2x escrowed; double card never fulfilled -> stuck
+
+        vm.warp(block.timestamp + game.REFUND_TIMEOUT() + 1);
+        vm.prank(player1);
+        game.claimTimeoutRefund();
+
+        assertEq(
+            casino.lastRefundAmount(), 200e18, "doubled stuck game refunds the effective (2x) bet"
+        );
+    }
+
+    function test_claimTimeoutRefund_dealerTurnStuck_isRefundable() public {
+        casino.playGame(player1, chipToken, 100e18);
+        uint256 reqId = vrf.getLastRequestId();
+        uint256[] memory cards = new uint256[](4);
+        cards[0] = 10; // Player: 10
+        cards[1] = 4; // Dealer: 5
+        cards[2] = 10; // Player: 10 => 20 (will stand)
+        cards[3] = 5; // Dealer: 6 => 11 (must hit)
+        vrf.fulfill(reqId, cards);
+
+        vm.prank(player1);
+        game.stand(); // dealer must draw -> DealerTurn, dealer-draw VRF never fulfilled -> stuck
+
+        (,,,, VyreJackCore.GameState state) = game.getGame(player1);
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.DealerTurn), "stuck in DealerTurn");
+
+        // A dealer-draw VRF failure must have a trustless player exit too (audit H1).
+        vm.warp(block.timestamp + game.REFUND_TIMEOUT() + 1);
+        vm.prank(player1);
+        game.claimTimeoutRefund();
+        assertEq(casino.lastRefundAmount(), 100e18, "DealerTurn-stuck game is refundable");
+    }
+
+    function test_reinitializeV2_revertsForNonOwner() public {
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: only owner");
+        game.reinitializeV2();
     }
 
     function test_DoubleAndBust() public {

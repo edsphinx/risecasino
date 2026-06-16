@@ -38,44 +38,84 @@ contract MockXPRegistry {
     }
 }
 
-/// @dev Mock Uniswap Factory
+/// @dev Mock LP pair token (a real contract so approve()/IERC20 calls succeed)
+contract MockPair is ERC20 {
+    constructor() ERC20("LP", "LP") { }
+}
+
+/// @dev Mock Uniswap Factory — mimics real Uniswap: createPair reverts if the pair
+///      already exists ("PAIR_EXISTS"), which is exactly what the old _graduate hit.
 contract MockUniFactory {
-    address public lastPair;
+    mapping(bytes32 => address) internal _pairs;
+
+    function _key(
+        address a,
+        address b
+    ) internal pure returns (bytes32) {
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
+    }
+
+    function getPair(
+        address a,
+        address b
+    ) external view returns (address) {
+        return _pairs[_key(a, b)];
+    }
 
     function createPair(
-        address,
-        address
-    ) external returns (address) {
-        lastPair = address(uint160(uint256(keccak256(abi.encodePacked(block.timestamp)))));
-        return lastPair;
+        address a,
+        address b
+    ) external returns (address pair) {
+        bytes32 k = _key(a, b);
+        require(_pairs[k] == address(0), "PAIR_EXISTS");
+        pair = address(new MockPair());
+        _pairs[k] = pair;
     }
 }
 
-/// @dev Mock Uniswap Router
+/// @dev Mock Uniswap Router — mimics real Uniswap: addLiquidity creates the pair if
+///      it does not exist yet.
 contract MockUniRouter {
+    MockUniFactory public factory;
+
+    function setFactory(
+        address f
+    ) external {
+        factory = MockUniFactory(f);
+    }
+
     function addLiquidity(
-        address,
-        address,
+        address tokenA,
+        address tokenB,
         uint256,
         uint256,
         uint256,
         uint256,
         address,
         uint256
-    ) external pure returns (uint256, uint256, uint256) {
+    ) external returns (uint256, uint256, uint256) {
+        if (factory.getPair(tokenA, tokenB) == address(0)) {
+            factory.createPair(tokenA, tokenB);
+        }
         return (0, 0, 1000e18);
     }
 }
 
-/// @dev Mock LP Vesting
+/// @dev Mock LP Vesting — records the lock (matches ILPVesting.lockLP)
 contract MockLPVesting {
-    function createLock(
-        address,
-        address,
-        uint256,
-        uint256,
-        uint256
-    ) external { }
+    address public lastPair;
+    uint256 public lastAmount;
+    address public lastBeneficiary;
+
+    function lockLP(
+        address pair,
+        uint256 amount,
+        address beneficiary
+    ) external {
+        lastPair = pair;
+        lastAmount = amount;
+        lastBeneficiary = beneficiary;
+    }
 }
 
 /**
@@ -100,6 +140,7 @@ contract BondingCurveTest is Test {
         xpRegistry = new MockXPRegistry();
         uniFactory = new MockUniFactory();
         uniRouter = new MockUniRouter();
+        uniRouter.setFactory(address(uniFactory));
         lpVesting = new MockLPVesting();
 
         curve = new BondingCurve(
@@ -249,6 +290,24 @@ contract BondingCurveTest is Test {
 
         assertGt(tokensOut, 0);
         assertEq(IERC20(token).balanceOf(buyer1), tokensOut);
+    }
+
+    function test_buy_graduatesAtThreshold() public {
+        vm.prank(creator);
+        address token = curve.launchToken("Grad", "GRAD");
+
+        // One large buy crosses the 60K CHIP graduation threshold (chipIn well within
+        // CURVE_SUPPLY). This must graduate the token, not revert.
+        vm.startPrank(buyer1);
+        chip.approve(address(curve), 90_000e18);
+        curve.buy(token, 90_000e18, 0);
+        vm.stopPrank();
+
+        (,,,,,, bool graduated, address lpPair,) = curve.curves(token);
+        assertTrue(graduated, "token should be graduated");
+        assertTrue(lpPair != address(0), "lp pair must be set");
+        // LP was locked for the creator via vesting.
+        assertEq(lpVesting.lastBeneficiary(), creator, "LP locked for creator");
     }
 
     function test_BuyZeroAmount() public {

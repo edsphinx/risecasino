@@ -256,6 +256,27 @@ contract VyreJackCommitRevealTest is Test {
         game.fallbackCommit(player1, keccak256("another_secret"));
     }
 
+    function test_fallbackCommit_allowsReCommitWhenStale() public {
+        casino.playGame(player1, chipToken, 100e18);
+        vm.warp(block.timestamp + 16);
+
+        bytes32 firstSecret = keccak256("first");
+        vm.prank(keeper);
+        game.fallbackCommit(player1, keccak256(abi.encodePacked(firstSecret)));
+
+        // The blockhash window passes -> the first commit can never be revealed safely.
+        vm.roll(block.number + 257);
+
+        // A fresh commit must be allowed so the game isn't stuck forever.
+        bytes32 secondSecret = keccak256("second");
+        vm.prank(keeper);
+        game.fallbackCommit(player1, keccak256(abi.encodePacked(secondSecret)));
+
+        (, uint256 commitBlock, bool pending) = game.commitRequests(player1);
+        assertEq(commitBlock, block.number, "re-committed at the current block");
+        assertTrue(pending, "fresh commit is pending");
+    }
+
     // ==================== FALLBACK REVEAL TESTS ====================
 
     function test_FallbackReveal_DealsCards() public {
@@ -290,6 +311,23 @@ contract VyreJackCommitRevealTest is Test {
             uint8(state) != uint8(VyreJackCore.GameState.Idle)
                 || state == VyreJackCore.GameState.Idle
         );
+    }
+
+    function test_RevertFallbackReveal_CommitExpired() public {
+        casino.playGame(player1, chipToken, 100e18);
+        vm.warp(block.timestamp + 16);
+
+        bytes32 secret = keccak256("stale_secret");
+        vm.prank(keeper);
+        game.fallbackCommit(player1, keccak256(abi.encodePacked(secret)));
+
+        // Past the 256-block window, blockhash(commitBlock) is 0 and the keeper could
+        // fully control the outcome — the reveal must be rejected (force a re-commit).
+        vm.roll(block.number + 257);
+
+        vm.prank(keeper);
+        vm.expectRevert("VyreJackCore: commit expired");
+        game.fallbackReveal(player1, secret);
     }
 
     function test_RevertFallbackReveal_InvalidSecret() public {

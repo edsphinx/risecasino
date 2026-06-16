@@ -349,34 +349,32 @@ contract BondingCurve is ReentrancyGuard {
         uint256 chipForLP = curve.realChipReserve;
         uint256 tokensForLP = LP_SUPPLY;
 
-        // Mint LP tokens to this contract
-        BondingCurveToken(token).mint(address(this), tokensForLP);
+        // Resolve the pair BEFORE adding liquidity. addLiquidity would otherwise create
+        // it internally, and a later createPair() reverts with "PAIR_EXISTS" — the bug
+        // that bricked every graduation. Fetch an existing pair or create a fresh one.
+        address pair = uniswapFactory.getPair(token, address(chip));
+        if (pair == address(0)) {
+            pair = uniswapFactory.createPair(token, address(chip));
+        }
+        curve.lpPair = pair;
 
-        // Approve router
+        // Mint LP tokens to this contract and approve the router.
+        BondingCurveToken(token).mint(address(this), tokensForLP);
         IERC20(token).approve(address(uniswapRouter), tokensForLP);
         chip.approve(address(uniswapRouter), chipForLP);
 
-        // Add liquidity
+        // Add liquidity. Mins are 0 because a permanent brick (DoS) from a pre-seeded
+        // pair is worse than the migration-MEV that strict mins would prevent; harden
+        // the migration step for mainnet (permissioned/snapshot) per audit M3.
         (,, uint256 lpAmount) = uniswapRouter.addLiquidity(
-            token,
-            address(chip),
-            tokensForLP,
-            chipForLP,
-            tokensForLP,
-            chipForLP,
-            address(this),
-            block.timestamp + 300
+            token, address(chip), tokensForLP, chipForLP, 0, 0, address(this), block.timestamp + 300
         );
 
-        // Get LP pair address
-        // Note: Would need to query factory, simplified here
-        curve.lpPair = uniswapFactory.createPair(token, address(chip));
+        // Lock the real LP tokens via the vesting contract.
+        IERC20(pair).approve(address(lpVesting), lpAmount);
+        lpVesting.lockLP(pair, lpAmount, curve.creator);
 
-        // Lock LP via vesting contract
-        IERC20(curve.lpPair).approve(address(lpVesting), lpAmount);
-        lpVesting.lockLP(curve.lpPair, lpAmount, curve.creator);
-
-        emit TokenGraduated(token, curve.lpPair, chipForLP, tokensForLP);
+        emit TokenGraduated(token, pair, chipForLP, tokensForLP);
     }
 
     // ==================== VIEW FUNCTIONS ====================

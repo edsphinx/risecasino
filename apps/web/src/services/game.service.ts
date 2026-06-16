@@ -36,6 +36,26 @@ async function getGame(player: `0x${string}`): Promise<VyreJackGame | null> {
       return null;
     }
 
+    // getGame() does NOT return the start timestamp or isDoubled. Read them from the
+    // public `games` mapping so the VRF-waiting overlay's retry/refund timers actually
+    // accrue (previously timestamp was hardcoded 0n → elapsed reset to ~0 every tick →
+    // a genuinely stuck game hung on "Dealing cards..." forever). Best-effort.
+    let timestamp = 0n;
+    let isDoubled = false;
+    try {
+      const meta = (await publicClient.readContract({
+        address: VYREJACKCORE_ADDRESS,
+        abi: VYREJACKCORE_ABI,
+        functionName: 'games',
+        args: [player],
+      })) as readonly [string, string, bigint, number, bigint, boolean];
+      // games(player) => [player, token, bet, state, timestamp, isDoubled]
+      timestamp = meta[4];
+      isDoubled = meta[5];
+    } catch {
+      // leave defaults — overlay timers won't accrue, but the game still renders
+    }
+
     return {
       player,
       token,
@@ -43,8 +63,8 @@ async function getGame(player: `0x${string}`): Promise<VyreJackGame | null> {
       playerCards: [...playerCards],
       dealerCards: [...dealerCards],
       state: state as VyreJackGameState,
-      timestamp: 0n, // Not returned by getGame
-      isDoubled: false, // Not returned by getGame
+      timestamp,
+      isDoubled,
     };
   } catch {
     return null;

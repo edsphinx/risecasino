@@ -174,7 +174,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
       // If no valid session key, create one
       if (!sessionKey || !store.isValid()) {
         try {
-          sessionKey = await store.createSessionKey(address);
+          sessionKey = await store.createSessionKey(address, tokenContext);
           if (!sessionKey) {
             throw new Error('Failed to create session key');
           }

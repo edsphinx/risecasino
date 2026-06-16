@@ -159,6 +159,12 @@ contract VyreStaking is IStakingRewards, ReentrancyGuard, Ownable {
         // This keeps the reward rate in the right range, preventing overflows due to
         // very high rates of reward in production.
         uint256 balance = rewardsToken.balanceOf(address(this));
+        // When the reward and staking tokens are the same, the contract's balance also
+        // holds stakers' principal — exclude it so rewards can never be backed by user
+        // stake (audit L6).
+        if (address(rewardsToken) == address(stakingToken)) {
+            balance -= _totalSupply;
+        }
         require(rewardRate <= balance / rewardsDuration, "Provided reward too high");
 
         lastUpdateTime = block.timestamp;

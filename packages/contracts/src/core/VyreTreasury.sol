@@ -63,8 +63,8 @@ contract VyreTreasury is ReentrancyGuard {
     /// @notice Amount spent today per token
     mapping(address => uint256) public dailySpent;
 
-    /// @notice Last reset timestamp
-    uint256 public lastResetTime;
+    /// @notice Last reset timestamp, per token (independent daily windows)
+    mapping(address => uint256) public lastResetTime;
 
     /// @notice Timelock for emergency withdraw (72 hours)
     uint256 public constant TIMELOCK_DURATION = 72 hours;
@@ -115,9 +115,9 @@ contract VyreTreasury is ReentrancyGuard {
         address token,
         uint256 amount
     ) {
-        // Check if we need to reset the day
-        if (block.timestamp >= lastResetTime + 1 days) {
-            lastResetTime = block.timestamp;
+        // Check if this token's daily window needs to reset (independent per token)
+        if (block.timestamp >= lastResetTime[token] + 1 days) {
+            lastResetTime[token] = block.timestamp;
             dailySpent[token] = 0; // Reset spent for this token
         }
         uint256 limit = dailyLimits[token];
@@ -134,7 +134,8 @@ contract VyreTreasury is ReentrancyGuard {
     ) {
         require(_owner != address(0), "VyreTreasury: zero owner");
         owner = _owner;
-        lastResetTime = block.timestamp;
+        // Per-token lastResetTime defaults to 0; the first payout of each token
+        // initializes its window.
     }
 
     // ==================== OPERATOR FUNCTIONS ====================
@@ -285,22 +286,12 @@ contract VyreTreasury is ReentrancyGuard {
         uint256 limit = dailyLimits[token];
         if (limit == 0) return type(uint256).max;
 
-        // Check if reset needed
-        if (block.timestamp >= lastResetTime + 1 days) {
+        // Check if this token's window has reset
+        if (block.timestamp >= lastResetTime[token] + 1 days) {
             return limit;
         }
 
         return limit > dailySpent[token] ? limit - dailySpent[token] : 0;
-    }
-
-    // ==================== INTERNAL ====================
-
-    function _resetDailyIfNeeded() internal {
-        if (block.timestamp >= lastResetTime + 1 days) {
-            lastResetTime = block.timestamp;
-            // Note: dailySpent is not reset here for gas efficiency
-            // Instead, we reset lazily per token when accessed
-        }
     }
 
     // ==================== RECEIVE ====================

@@ -19,6 +19,32 @@ contract MockMeme is ERC20 {
     }
 }
 
+/// @dev Mock fee-on-transfer token: charges 1% on every transfer.
+contract MockFeeMeme is ERC20 {
+    constructor() ERC20("FeeMeme", "FMEME") { }
+
+    function mint(
+        address to,
+        uint256 amount
+    ) external {
+        _mint(to, amount);
+    }
+
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal override {
+        if (from != address(0) && to != address(0) && value > 0) {
+            uint256 fee = value / 100; // 1%
+            super._update(from, to, value - fee);
+            super._update(from, address(0xdEaD), fee);
+            return;
+        }
+        super._update(from, to, value);
+    }
+}
+
 /**
  * @title MemeTokenSink Test Suite
  * @notice Tests for MEME token loss distribution (50% burn, 25% creator, 25% casino)
@@ -86,6 +112,22 @@ contract MemeTokenSinkTest is Test {
         assertEq(meme.balanceOf(sink.BURN_ADDRESS()), 500e18);
         assertEq(meme.balanceOf(creator), 250e18);
         assertEq(meme.balanceOf(treasury), 250e18);
+    }
+
+    function test_processLoss_feeOnTransfer_splitsActualReceived() public {
+        MockFeeMeme fee = new MockFeeMeme();
+        fee.mint(game, 100_000e18);
+
+        // The game sends 1000 but, with a 1% transfer fee, the sink only receives 990.
+        // Splits must be computed on what was actually received so the contract doesn't
+        // try to distribute more than it holds (audit M6).
+        vm.startPrank(game);
+        fee.approve(address(sink), 1000e18);
+        sink.processLoss(address(fee), 1000e18);
+        vm.stopPrank();
+
+        // All received tokens were distributed; the sink retains nothing.
+        assertEq(fee.balanceOf(address(sink)), 0, "sink must not retain or over-distribute");
     }
 
     function test_ProcessLossNoCreator() public {

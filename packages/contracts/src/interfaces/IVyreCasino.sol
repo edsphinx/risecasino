@@ -26,6 +26,26 @@ interface IVyreCasino {
         uint256 amount
     ) external;
 
+    /// @notice Refund a stuck game's bet in full (no house edge applied)
+    /// @param player Player to refund
+    /// @param token Token to refund
+    /// @param amount Original bet amount
+    function refundBet(
+        address player,
+        address token,
+        uint256 amount
+    ) external;
+
+    /// @notice Pull an additional stake from a player mid-game (e.g. double-down)
+    /// @param player Player to pull from (uses their approval to the casino)
+    /// @param token Token to collect
+    /// @param amount Additional stake amount
+    function collectBet(
+        address player,
+        address token,
+        uint256 amount
+    ) external;
+
     /// @notice Check if a game is registered
     /// @param game Game contract address
     /// @return registered True if registered

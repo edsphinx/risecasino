@@ -13,7 +13,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { P256, Signature, PublicKey } from 'ox';
-import { getProvider } from '@/lib/riseWallet';
+import { getProvider, waitForHydration } from '@/lib/riseWallet';
 import { GAME_CALLS, getSpendLimits, type TokenContext } from '@/lib/gamePermissions';
 import { logger } from '@/lib/logger';
 
@@ -169,21 +169,49 @@ export const useSessionStore = create<SessionStore>()(
           });
           const expiry = Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS;
 
-          // Request permissions from wallet
-          const spendLimits = getSpendLimits(tokenContext);
-          logger.log('[SessionStore] Requesting permissions...');
+          // Ensure the Porto provider has hydrated its chain connection before granting.
+          // The connect flow (useWalletConnection) awaits this; the grant did not, which
+          // caused intermittent "provider is disconnected from all chains" errors.
+          await waitForHydration();
 
-          await (provider as any).request({
-            method: 'wallet_grantPermissions',
-            params: [
-              {
-                key: { type: 'p256', publicKey },
-                expiry,
-                permissions: { calls: GAME_CALLS, spend: spendLimits },
-                feeToken: { symbol: 'native', limit: '0.01' },
-              },
-            ],
-          });
+          // Request permissions from wallet, retrying transient disconnects.
+          const spendLimits = getSpendLimits(tokenContext);
+          const grantParams = [
+            {
+              key: { type: 'p256', publicKey },
+              expiry,
+              permissions: { calls: GAME_CALLS, spend: spendLimits },
+              feeToken: { symbol: 'native', limit: '0.01' },
+            },
+          ];
+
+          let granted = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              logger.log(`[SessionStore] Requesting permissions (attempt ${attempt}/3)...`);
+              await (provider as any).request({
+                method: 'wallet_grantPermissions',
+                params: grantParams,
+              });
+              granted = true;
+              break;
+            } catch (err) {
+              const msg = String(err);
+              const transient = /disconnected from all chains|disconnected|InternalError/i.test(
+                msg
+              );
+              if (attempt < 3 && transient) {
+                logger.warn('[SessionStore] Provider disconnected, re-hydrating and retrying...');
+                await waitForHydration();
+                await new Promise((r) => setTimeout(r, 600 * attempt));
+                continue;
+              }
+              throw err;
+            }
+          }
+          if (!granted) {
+            throw new Error('Failed to grant session permissions');
+          }
 
           // Create and save session data
           const newKey: SessionKeyData = {

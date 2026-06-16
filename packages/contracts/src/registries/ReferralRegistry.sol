@@ -126,6 +126,9 @@ contract ReferralRegistry is ReentrancyGuard {
 
         if (!selfReferralAllowed) {
             require(referrer != msg.sender, "ReferralRegistry: self referral");
+            // 1-level cycle guard: block A->B when B->A already exists, the
+            // simplest two-wallet self-referral loop (audit H4).
+            require(referrers[referrer] != msg.sender, "ReferralRegistry: referral cycle");
         }
 
         referrers[msg.sender] = referrer;

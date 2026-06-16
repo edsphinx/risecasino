@@ -46,6 +46,7 @@ export const GAME_CALLS = [
     { to: GAME_ADDRESS, signature: getFunctionSelector('double()') },
     { to: GAME_ADDRESS, signature: getFunctionSelector('surrender()') },
     { to: GAME_ADDRESS, signature: getFunctionSelector('retryVRF()') },
+    { to: GAME_ADDRESS, signature: getFunctionSelector('claimTimeoutRefund()') },
 
     // === ERC20 - Token Approval ===
     { to: USDC_TOKEN_ADDRESS.toLowerCase() as `0x${string}`, signature: getFunctionSelector('approve(address,uint256)') },
@@ -66,9 +67,12 @@ type SpendPermission = {
  * - CHIP/USDC: with token address (ERC20)
  */
 export function getSpendLimits(tokenContext?: TokenContext): SpendPermission[] {
-    // Daily limits as HEX strings (Porto validation requires ^0x pattern)
-    const LIMIT_100_18_DECIMALS = `0x${parseUnits('100', 18).toString(16)}`;
-    const LIMIT_100_6_DECIMALS = `0x${parseUnits('100', 6).toString(16)}`;
+    // Daily session spend cap as HEX strings (Porto validation requires ^0x pattern).
+    // Generous enough for a full day of play (max bet is small) while still bounding a
+    // compromised session key. Was 100 — below even a single CHIP bet, which exhausted
+    // the grant mid-game and forced passkey popups.
+    const LIMIT_100_18_DECIMALS = `0x${parseUnits('100000', 18).toString(16)}`;
+    const LIMIT_100_6_DECIMALS = `0x${parseUnits('100000', 6).toString(16)}`;
 
     switch (tokenContext) {
         case 'ETH':

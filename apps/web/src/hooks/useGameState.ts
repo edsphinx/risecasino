@@ -307,13 +307,18 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   // poll contract state to catch updates even if WebSocket events are missed.
   // Covers: initial deal (VRF), Hit/Double (VRF), Stand/Surrender (dealer turn).
   //
-  // SAFETY: Hard-capped at MAX_POLLS to prevent runaway requests.
-  // Uses a ref counter so the limit persists across effect re-runs.
+  // Two-tier polling via recursive setTimeout:
+  // - Tier 1 (fast): 5 polls at 1s — catches quick VRF responses
+  // - Tier 2 (slow): polls every 3s for up to 120s — catches keeper fallback (20-30s)
   const pollCountRef = useRef(0);
-  const MAX_POLLS = 5; // 5 polls × 1s = 5s max (Rise has 10ms blocks, VRF responds in <1s)
-  const POLL_INTERVAL_MS = 1000;
+  const pollStartRef = useRef(0);
 
   useEffect(() => {
+    const FAST_POLLS = 5;
+    const FAST_MS = 1000;
+    const SLOW_MS = 3000;
+    const MAX_DURATION_MS = 120_000; // 2 minutes hard cap
+
     const isPollingPhase =
       gamePhase === 'waiting_vrf' ||
       gamePhase === 'dealer_reveal' ||
@@ -321,28 +326,26 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       gamePhase === 'dealer_hitting';
 
     if (!isPollingPhase) {
-      // Reset counter when we exit a polling phase (game resolved, player_turn, idle, etc.)
       pollCountRef.current = 0;
+      pollStartRef.current = 0;
       return;
     }
 
-    // Already exhausted polls for this action cycle
-    if (pollCountRef.current >= MAX_POLLS) {
-      logger.warn(
-        `[GameStateCasino] Action poller exhausted (${MAX_POLLS} polls). Phase still: ${gamePhase}`
-      );
-      return;
+    if (pollStartRef.current === 0) {
+      pollStartRef.current = Date.now();
     }
 
-    logger.log(
-      `[GameStateCasino] Action poller started for phase: ${gamePhase} (poll ${pollCountRef.current}/${MAX_POLLS})`
-    );
+    let timerId: ReturnType<typeof setTimeout>;
+    let cancelled = false;
 
-    // Single poll after 1s delay, then repeat every 2s — all with hard cap
-    const interval = setInterval(() => {
-      if (pollCountRef.current >= MAX_POLLS) {
-        logger.warn(`[GameStateCasino] Action poller hit max (${MAX_POLLS}), stopping`);
-        clearInterval(interval);
+    const schedulePoll = () => {
+      if (cancelled) return;
+
+      const elapsed = Date.now() - pollStartRef.current;
+      if (elapsed > MAX_DURATION_MS) {
+        logger.warn(
+          `[GameStateCasino] Action poller timed out after ${Math.round(elapsed / 1000)}s`
+        );
         return;
       }
 
@@ -354,19 +357,28 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
         phase !== 'dealer_hitting'
       ) {
         logger.log(`[GameStateCasino] Action poller stopping, phase: ${phase}`);
-        clearInterval(interval);
         return;
       }
 
       pollCountRef.current++;
+      const tier = pollCountRef.current <= FAST_POLLS ? 'fast' : 'slow';
+      const nextDelay = pollCountRef.current < FAST_POLLS ? FAST_MS : SLOW_MS;
+
       logger.log(
-        `[GameStateCasino] Action poll #${pollCountRef.current}/${MAX_POLLS} (phase: ${phase})`
+        `[GameStateCasino] Action poll #${pollCountRef.current} [${tier}] (phase: ${phase})`
       );
       serviceRef.current.refetch();
-    }, POLL_INTERVAL_MS);
+
+      timerId = setTimeout(schedulePoll, nextDelay);
+    };
+
+    // Start first poll after initial delay
+    const firstDelay = pollCountRef.current < FAST_POLLS ? FAST_MS : SLOW_MS;
+    timerId = setTimeout(schedulePoll, firstDelay);
 
     return () => {
-      clearInterval(interval);
+      cancelled = true;
+      clearTimeout(timerId);
     };
   }, [gamePhase]);
 

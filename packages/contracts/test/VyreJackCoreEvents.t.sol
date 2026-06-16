@@ -230,8 +230,9 @@ contract VyreJackCoreEventsTest is Test {
         vm.prank(player1);
         game.stand();
 
-        // No payout call (dealer wins)
-        assertEq(casino.getPayoutCallCount(), 0);
+        // settlePayout is now called even on a loss (amount 0) so the casino closes the
+        // per-bet escrow; the player still receives nothing.
+        assertEq(casino.getPayoutCallCount(), 1);
     }
 
     // ==================== GAME RESOLVED EVENT TESTS ====================
@@ -321,8 +322,8 @@ contract VyreJackCoreEventsTest is Test {
         assertTrue(foundGameResolved, "GameResolved event not found on player bust");
         assertTrue(foundGamePlayed, "GamePlayed event not found on player bust");
 
-        // Game should be resolved (dealer wins via bust)
-        assertEq(casino.getPayoutCallCount(), 0);
+        // Game resolved (player bust). settlePayout is now called with 0 to close the escrow.
+        assertEq(casino.getPayoutCallCount(), 1);
     }
 
     // ==================== DEALER BUSTED EVENT TESTS ====================

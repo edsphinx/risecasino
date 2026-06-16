@@ -200,6 +200,10 @@ contract VyreCasinoCircuitBreakerTest is Test {
 
         // Set daily payout limit for USDC
         casino.setDailyPayoutLimit(address(usdc), DAILY_LIMIT);
+
+        // These tests exercise the daily-limit circuit breaker with up-to-10x wins;
+        // raise the per-bet escrow cap to its max so it doesn't pre-empt that guard.
+        casino.setMaxPayoutBps(100_000);
     }
 
     // ==================== ADMIN TESTS ====================

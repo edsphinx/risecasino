@@ -136,6 +136,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     /// @notice VRF timeout threshold in seconds (after this, fallback is allowed)
     uint256 public constant VRF_TIMEOUT = 15;
 
+    /// @notice After a game has been stuck waiting on VRF this long, the player can
+    ///         self-refund without an admin. Far beyond the keeper's normal fallback
+    ///         window, so only genuinely-dead games qualify.
+    uint256 public constant REFUND_TIMEOUT = 1 hours;
+
     /// @notice Pending commit-reveal requests
     mapping(address => CommitRevealRequest) public commitRequests;
 
@@ -332,7 +337,7 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
      * @notice Reinitializer for V2 upgrades
      * @dev Call this after upgrading to initialize new V2 state
      */
-    function reinitializeV2() external reinitializer(2) {
+    function reinitializeV2() external onlyOwner reinitializer(2) {
         // V2 initialization logic goes here
         // Currently empty - add new state initialization as needed
     }
@@ -427,6 +432,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         request.fulfilled = true;
         address player = request.player;
 
+        // A refunded or finished game is deleted (state Idle). A late VRF fulfill must
+        // no-op so it cannot revive a phantom game or double-settle — this is what makes
+        // the refund paths mutually exclusive with VRF resolution.
+        if (games[player].state == GameState.Idle) {
+            return;
+        }
+
         if (request.requestType == RequestType.InitialDeal) {
             _handleInitialDeal(player, randomNumbers);
         } else if (request.requestType == RequestType.PlayerHit) {
@@ -473,6 +485,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         require(game.state == GameState.PlayerTurn, "VyreJackCore: not your turn");
         require(game.playerCards.length == 2, "VyreJackCore: can only double on initial hand");
         require(!game.isDoubled, "VyreJackCore: already doubled");
+
+        // Collect the second stake up-front so the doubled bet is fully escrowed.
+        // Without this the house pays out on 2x but only 1x was ever taken in.
+        IVyreCasino(casino).collectBet(msg.sender, game.token, game.bet);
 
         // Mark as doubled - the bet will be doubled when resolving
         game.isDoubled = true;
@@ -631,36 +647,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             emit CardDealt(player, game.dealerCards[1], true, true);
         }
 
-        (uint8 dealerValue, bool isSoft) = calculateHandValue(game.dealerCards);
-        emit HandValue(player, dealerValue, isSoft, true);
-
-        uint8 cardsNeeded = 0;
-        uint8 tempValue = dealerValue;
-        bool tempSoft = isSoft;
-
-        while (_shouldDealerHit(tempValue, tempSoft) && cardsNeeded < 5) {
-            cardsNeeded++;
-            tempValue += 7;
-            if (tempValue > 21 && tempSoft) {
-                tempValue -= 10;
-                tempSoft = false;
-            }
-        }
-
-        if (cardsNeeded > 0) {
-            uint256 nonce = playerNonces[player]++;
-            uint256 seed = uint256(keccak256(abi.encode(player, block.timestamp, "dealer", nonce)));
-            uint256 requestId = coordinator.requestRandomNumbers(cardsNeeded, seed);
-
-            vrfRequests[requestId] = VRFRequest({
-                player: player,
-                requestType: RequestType.DealerDraw,
-                fulfilled: false,
-                timestamp: block.timestamp
-            });
-        } else {
-            _resolveGame(player);
-        }
+        // Draw dealer cards strictly ONE at a time. _resolveDealerHand requests exactly
+        // one card when the dealer must hit and re-evaluates on each fulfillment, so the
+        // dealer never receives a card it should have stood before (fixes the batch
+        // estimator that over-requested and pushed extra cards unconditionally).
+        _resolveDealerHand(player);
     }
 
     function _resolveDealerHand(
@@ -742,11 +733,10 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         uint256 bet = game.bet; // Save before delete
         game.state = result;
 
-        // Settle payout via VyreCasino (applies house fee on wins)
-        // For PUSH (payout=0), no settlement needed but XP will be awarded
-        if (payout > 0) {
-            IVyreCasino(casino).settlePayout(player, token, payout);
-        }
+        // Always settle — even on a loss (payout 0) — so the casino closes the per-bet
+        // escrow for this hand. Skipping it would leave the escrow open until the next
+        // bet overwrites it (audit M1). On wins it also applies the house fee.
+        IVyreCasino(casino).settlePayout(player, token, payout);
 
         // Emit GameResolved for indexer/frontend stats
         (uint8 playerFinalValue,) =
@@ -819,10 +809,19 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         Game storage game = games[player];
         require(game.state != GameState.Idle, "VyreJackCore: no active game");
 
-        uint256 betAmount = game.bet;
+        address token = game.token;
+        // Refund the full escrow, which is 2x if the player had doubled down.
+        uint256 betAmount = game.isDoubled ? game.bet * 2 : game.bet;
 
-        // Reset game state
+        // Reset game state first (checks-effects-interactions before the refund call).
         delete games[player];
+        delete commitRequests[player]; // a stale fallback commit must not survive a refund
+
+        // Refund the escrowed bet in full — a stuck game is not the player's fault,
+        // so force-resolving must never confiscate it (audit H2).
+        if (betAmount > 0) {
+            IVyreCasino(casino).refundBet(player, token, betAmount);
+        }
 
         emit GameForceResolved(player, betAmount, reason);
         emit GameResolved(
@@ -832,6 +831,36 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             0, // playerFinalValue
             0 // dealerFinalValue
         );
+    }
+
+    /// @notice Player-callable escape hatch for a game stuck waiting on VRF. After
+    ///         REFUND_TIMEOUT the player reclaims their escrowed bet in full without
+    ///         needing an admin (audit H2). Restricted to the VRF-waiting states, so
+    ///         it can never be used to walk away from an in-progress losing hand.
+    function claimTimeoutRefund() external {
+        Game storage game = games[msg.sender];
+        require(
+            game.state == GameState.WaitingForDeal || game.state == GameState.WaitingForHit
+                || game.state == GameState.WaitingForDouble || game.state == GameState.DealerTurn,
+            "VyreJackCore: not refundable"
+        );
+        require(
+            block.timestamp >= game.timestamp + REFUND_TIMEOUT,
+            "VyreJackCore: refund not yet available"
+        );
+
+        address token = game.token;
+        // Refund the full escrow, which is 2x if the player had doubled down.
+        uint256 betAmount = game.isDoubled ? game.bet * 2 : game.bet;
+
+        delete games[msg.sender];
+        delete commitRequests[msg.sender]; // clear any stale fallback commit on refund
+
+        if (betAmount > 0) {
+            IVyreCasino(casino).refundBet(msg.sender, token, betAmount);
+        }
+
+        emit GameForceResolved(msg.sender, betAmount, "player timeout refund");
     }
 
     // ==================== ADMIN ====================
@@ -945,8 +974,14 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         // Verify VRF has actually timed out (check game timestamp)
         require(block.timestamp > game.timestamp + VRF_TIMEOUT, "VyreJackCore: VRF not timed out");
 
-        // Cannot commit if already pending
-        require(!commitRequests[player].pending, "VyreJackCore: commit pending");
+        // Cannot commit if a fresh commit is still pending. A stale one (past the
+        // blockhash window, so it can never be revealed) may be replaced — otherwise a
+        // missed reveal window would lock the game forever (audit ops H1).
+        CommitRevealRequest storage existing = commitRequests[player];
+        require(
+            !existing.pending || block.number > existing.blockNumber + 256,
+            "VyreJackCore: commit pending"
+        );
 
         commitRequests[player] = CommitRevealRequest({
             commitment: commitment, blockNumber: block.number, pending: true
@@ -972,6 +1007,18 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             keccak256(abi.encodePacked(secret)) == req.commitment, "VyreJackCore: invalid reveal"
         );
         require(block.number > req.blockNumber, "VyreJackCore: wait one block");
+        // Reveal must land within the 256-block blockhash window. Past it,
+        // blockhash(req.blockNumber) is 0 and randomness collapses to keeper-controlled
+        // inputs — reject and force a re-commit instead (audit ops H1).
+        require(block.number <= req.blockNumber + 256, "VyreJackCore: commit expired");
+
+        // If the game was already refunded/resolved (Idle), this commit is dead — clear
+        // it and no-op so a late reveal can't act on a deleted game or emit phantom
+        // events (audit H3; makes the protection explicit, not incidental).
+        if (games[player].state == GameState.Idle) {
+            delete commitRequests[player];
+            return;
+        }
 
         // Generate randomness combining secret + blockhash (unpredictable by keeper)
         uint256 randomness = uint256(

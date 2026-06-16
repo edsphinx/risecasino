@@ -133,6 +133,24 @@ contract VyreCasino is ReentrancyGuard {
     /// @notice Whether circuit breaker is active
     bool public circuitBreakerEnabled = true;
 
+    // ==================== PER-BET ESCROW (audit H1) ====================
+
+    /// @notice A player's open bet for a game: which token and how much is at stake.
+    struct BetEscrow {
+        address token;
+        uint256 amount;
+    }
+
+    /// @notice Open bet per (game, player). Opened on play(), grown by collectBet
+    ///         (double), consumed/closed by settlePayout/refundBet. Binds both the token
+    ///         and the amount so a compromised or buggy game cannot drain the treasury
+    ///         (of any token) to arbitrary addresses.
+    mapping(address => mapping(address => BetEscrow)) public betEscrow;
+
+    /// @notice Max payout a game may settle, as bps of the player's escrowed bet
+    ///         (30000 = 3x — covers blackjack 2.5x with margin). Owner-tunable.
+    uint256 public maxPayoutBps = 30_000;
+
     // ==================== CHIP TIERS ====================
 
     /// @notice Visual chip tiers for frontend
@@ -174,7 +192,8 @@ contract VyreCasino is ReentrancyGuard {
     event Paused(address indexed account);
     event Unpaused(address indexed account);
     event HouseEdgeUpdated(uint256 oldBps, uint256 newBps);
-    event ReferralShareUpdated(uint256 oldBps, uint256 newBps);
+    event EdgeSplitUpdated(uint256 referralBps, uint256 treasuryBps, uint256 buybackBps);
+    event MaxPayoutBpsUpdated(uint256 oldBps, uint256 newBps);
     event XPRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
     event BuybackWalletUpdated(address indexed oldWallet, address indexed newWallet);
     event CircuitBreakerTriggered(address indexed token, uint256 dailyTotal, uint256 limit);
@@ -251,6 +270,11 @@ contract VyreCasino is ReentrancyGuard {
         // Transfer bet from player to treasury
         IERC20(token).safeTransferFrom(msg.sender, address(treasury), amount);
 
+        // Open the per-bet escrow for this game/player (audit H1). Overwriting any
+        // stale entry is safe: real async games block replay while a game is active.
+        require(betEscrow[game][msg.sender].amount == 0, "VyreCasino: bet already open");
+        betEscrow[game][msg.sender] = BetEscrow({ token: token, amount: amount });
+
         // Determine chip tier for display
         uint8 chipTier = _getChipTier(amount);
 
@@ -260,8 +284,9 @@ contract VyreCasino is ReentrancyGuard {
 
         result = IVyreGame(game).play(msg.sender, betInfo, gameData);
 
-        // Process result
+        // Process result (synchronous games settle here, capped by the escrow)
         if (result.won && result.payout > 0) {
+            _consumeEscrow(game, msg.sender, token, result.payout);
             _processWin(msg.sender, token, result.payout);
         }
 
@@ -316,6 +341,10 @@ contract VyreCasino is ReentrancyGuard {
             signature
         );
 
+        // Open the per-bet escrow for this game/player (audit H1).
+        require(betEscrow[game][msg.sender].amount == 0, "VyreCasino: bet already open");
+        betEscrow[game][msg.sender] = BetEscrow({ token: token, amount: amount });
+
         // Determine chip tier for display
         uint8 chipTier = _getChipTier(amount);
 
@@ -325,8 +354,9 @@ contract VyreCasino is ReentrancyGuard {
 
         result = IVyreGame(game).play(msg.sender, betInfo, gameData);
 
-        // Process result
+        // Process result (synchronous games settle here, capped by the escrow)
         if (result.won && result.payout > 0) {
+            _consumeEscrow(game, msg.sender, token, result.payout);
             _processWin(msg.sender, token, result.payout);
         }
 
@@ -417,13 +447,32 @@ contract VyreCasino is ReentrancyGuard {
         emit HouseEdgeUpdated(oldBps, bps);
     }
 
-    function setReferralShare(
+    /// @notice Set the per-bet payout cap (bps of the staked bet). Bounded to [1x, 10x]
+    ///         so it can never be set below a legitimate payout or absurdly high.
+    function setMaxPayoutBps(
         uint256 bps
     ) external onlyOwner {
-        require(bps <= 10_000, "VyreCasino: max 100%");
-        uint256 oldBps = referralShareBps;
-        referralShareBps = bps;
-        emit ReferralShareUpdated(oldBps, bps);
+        require(bps >= 10_000 && bps <= 100_000, "VyreCasino: bps out of range");
+        uint256 oldBps = maxPayoutBps;
+        maxPayoutBps = bps;
+        emit MaxPayoutBpsUpdated(oldBps, bps);
+    }
+
+    /// @notice Atomically set the house-edge split between referral, treasury, and
+    ///         buyback. Must total 100% (10000 bps) so the casino can never pay out
+    ///         more house edge than it collected (fixes the independent-shares footgun).
+    function setEdgeSplit(
+        uint256 referralBps,
+        uint256 treasuryBps,
+        uint256 buybackBps
+    ) external onlyOwner {
+        require(
+            referralBps + treasuryBps + buybackBps == 10_000, "VyreCasino: split must total 100%"
+        );
+        referralShareBps = referralBps;
+        treasuryShareBps = treasuryBps;
+        buybackShareBps = buybackBps;
+        emit EdgeSplitUpdated(referralBps, treasuryBps, buybackBps);
     }
 
     function setXPRegistry(
@@ -497,6 +546,21 @@ contract VyreCasino is ReentrancyGuard {
      * @param token Token to pay
      * @param amount Gross payout amount (before house edge)
      */
+    /// @notice Validate and close a player's escrowed bet for a payout, capping it at
+    ///         maxPayoutBps of what they staked through this game (audit H1).
+    function _consumeEscrow(
+        address game,
+        address player,
+        address token,
+        uint256 payout
+    ) internal {
+        BetEscrow storage e = betEscrow[game][player];
+        require(e.amount > 0, "VyreCasino: no open bet");
+        require(e.token == token, "VyreCasino: token mismatch");
+        require(payout <= (e.amount * maxPayoutBps) / 10_000, "VyreCasino: payout exceeds cap");
+        delete betEscrow[game][player];
+    }
+
     function settlePayout(
         address player,
         address token,
@@ -506,13 +570,68 @@ contract VyreCasino is ReentrancyGuard {
         require(player != address(0), "VyreCasino: zero player");
 
         if (amount > 0) {
+            _consumeEscrow(msg.sender, player, token, amount);
             _processWin(player, token, amount);
+        } else {
+            // Loss: close the escrow; the house keeps the staked bet.
+            delete betEscrow[msg.sender][player];
         }
 
         emit GameSettled(msg.sender, player, token, amount);
     }
 
     event GameSettled(address indexed game, address indexed player, address token, uint256 amount);
+    event BetRefunded(address indexed game, address indexed player, address token, uint256 amount);
+
+    /// @notice Refund a stuck game's original bet in full. Unlike settlePayout, no
+    ///         house edge is applied and the daily win circuit breaker is not consumed
+    ///         — a stuck game is not the player's fault, so they get exactly their bet
+    ///         back. Registered-game-only, same trust model as settlePayout.
+    function refundBet(
+        address player,
+        address token,
+        uint256 amount
+    ) external nonReentrant {
+        require(registeredGames[msg.sender], "VyreCasino: only registered games");
+        require(player != address(0), "VyreCasino: zero player");
+        BetEscrow storage e = betEscrow[msg.sender][player];
+        require(amount <= e.amount, "VyreCasino: refund exceeds escrow");
+        require(amount == 0 || e.token == token, "VyreCasino: token mismatch");
+
+        delete betEscrow[msg.sender][player];
+
+        if (amount > 0) {
+            treasury.payout(player, token, amount);
+        }
+
+        emit BetRefunded(msg.sender, player, token, amount);
+    }
+
+    event BetCollected(address indexed game, address indexed player, address token, uint256 amount);
+
+    /// @notice Pull an additional stake from a player into the treasury mid-game (e.g.
+    ///         a double-down's second bet). Uses the player's existing approval to the
+    ///         casino. Registered-game-only, same trust model as settlePayout/refundBet.
+    function collectBet(
+        address player,
+        address token,
+        uint256 amount
+    ) external nonReentrant {
+        require(registeredGames[msg.sender], "VyreCasino: only registered games");
+        require(player != address(0), "VyreCasino: zero player");
+
+        BetEscrow storage e = betEscrow[msg.sender][player];
+        require(e.amount > 0, "VyreCasino: no open bet");
+        require(e.token == token, "VyreCasino: token mismatch");
+        require(amount <= e.amount, "VyreCasino: collect exceeds bet");
+
+        if (amount > 0) {
+            IERC20(token).safeTransferFrom(player, address(treasury), amount);
+            e.amount += amount;
+        }
+
+        emit BetCollected(msg.sender, player, token, amount);
+    }
 
     function pause() external onlyOwner {
         paused = true;

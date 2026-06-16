@@ -109,13 +109,17 @@ contract MemeTokenSink {
         require(token != address(0), "MemeTokenSink: zero token");
         require(amount > 0, "MemeTokenSink: zero amount");
 
-        // Transfer tokens to this contract first
+        // Transfer tokens in, measuring what actually arrived — fee-on-transfer or
+        // rebasing tokens deliver less than `amount`, and splitting `amount` would try
+        // to distribute more than the contract holds (audit M6).
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
 
-        // Calculate splits
-        uint256 burnAmount = (amount * burnShareBps) / 10_000;
-        uint256 creatorAmount = (amount * creatorShareBps) / 10_000;
-        uint256 casinoAmount = amount - burnAmount - creatorAmount;
+        // Calculate splits on the received amount
+        uint256 burnAmount = (received * burnShareBps) / 10_000;
+        uint256 creatorAmount = (received * creatorShareBps) / 10_000;
+        uint256 casinoAmount = received - burnAmount - creatorAmount;
 
         // Burn (send to dead address)
         if (burnAmount > 0) {
@@ -136,7 +140,7 @@ contract MemeTokenSink {
             IERC20(token).safeTransfer(treasury, casinoAmount);
         }
 
-        emit LossProcessed(token, amount, burnAmount, creatorAmount, casinoAmount);
+        emit LossProcessed(token, received, burnAmount, creatorAmount, casinoAmount);
     }
 
     // ==================== REGISTRATION ====================

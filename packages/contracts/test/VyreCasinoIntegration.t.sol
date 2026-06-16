@@ -209,6 +209,77 @@ contract VyreCasinoIntegrationTest is Test {
         // Game should be resolved now (either win, lose, or in player turn)
     }
 
+    function test_ForceResolveGame_RefundsStuckBet() public {
+        uint256 betAmount = 100e18;
+        uint256 balanceBefore = chip.balanceOf(player1);
+
+        // Player starts a game; the bet is escrowed into the treasury.
+        vm.prank(player1);
+        casino.play(address(game), address(chip), betAmount, "");
+        assertLt(chip.balanceOf(player1), balanceBefore, "bet should be escrowed");
+
+        // VRF is never fulfilled -> game is stuck. Admin force-resolves it.
+        game.forceResolveGame(player1, "VRF stuck");
+
+        // The stuck bet must be returned in full (audit H2: no confiscation).
+        assertEq(chip.balanceOf(player1), balanceBefore, "stuck bet must be refunded in full");
+    }
+
+    function test_claimTimeoutRefund_refundsAfterTimeout() public {
+        uint256 balanceBefore = chip.balanceOf(player1);
+
+        vm.prank(player1);
+        casino.play(address(game), address(chip), 100e18, ""); // stuck in WaitingForDeal
+
+        vm.warp(block.timestamp + game.REFUND_TIMEOUT() + 1);
+
+        vm.prank(player1);
+        game.claimTimeoutRefund();
+
+        assertEq(
+            chip.balanceOf(player1), balanceBefore, "player self-refunds full bet after timeout"
+        );
+    }
+
+    function test_claimTimeoutRefund_revertsBeforeTimeout() public {
+        vm.prank(player1);
+        casino.play(address(game), address(chip), 100e18, "");
+
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: refund not yet available");
+        game.claimTimeoutRefund();
+    }
+
+    function test_claimTimeoutRefund_revertsWhenNotWaiting() public {
+        // No active game = Idle, which is outside the refundable allowlist (exactly the
+        // VRF-waiting states). PlayerTurn is excluded by the same allowlist, so a player
+        // cannot wait out a losing hand and refund it.
+        vm.warp(block.timestamp + 2 hours);
+        vm.prank(player1);
+        vm.expectRevert("VyreJackCore: not refundable");
+        game.claimTimeoutRefund();
+    }
+
+    function test_lateVRFFulfill_afterRefund_isNoop() public {
+        uint256 balanceBefore = chip.balanceOf(player1);
+
+        vm.prank(player1);
+        casino.play(address(game), address(chip), 100e18, "");
+        uint256 reqId = vrf.requestId();
+
+        // Refund deletes the game.
+        game.forceResolveGame(player1, "stuck");
+        assertEq(chip.balanceOf(player1), balanceBefore, "refunded");
+
+        // A late VRF fulfill for the deleted game must NOT revive a phantom game
+        // (mutual exclusion between refund and VRF resolution).
+        vrf.fulfill(reqId);
+
+        (,,,, VyreJackCore.GameState state) = game.getGame(player1);
+        assertTrue(state == VyreJackCore.GameState.Idle, "no phantom game after late fulfill");
+        assertEq(chip.balanceOf(player1), balanceBefore, "balance unchanged by late fulfill");
+    }
+
     function test_RevertIfGameNotRegistered() public {
         // Deploy unregistered game (UUPS pattern)
         VyreJackCore unregImpl = new VyreJackCore();
@@ -675,14 +746,16 @@ contract VyreCasinoAdminTest is Test {
         casino.acceptOwnership();
     }
 
-    function test_SetReferralShare() public {
-        casino.setReferralShare(7000);
+    function test_SetEdgeSplit() public {
+        casino.setEdgeSplit(7000, 2000, 1000);
         assertEq(casino.referralShareBps(), 7000);
+        assertEq(casino.treasuryShareBps(), 2000);
+        assertEq(casino.buybackShareBps(), 1000);
     }
 
-    function test_RevertReferralShareTooHigh() public {
-        vm.expectRevert("VyreCasino: max 100%");
-        casino.setReferralShare(10_001);
+    function test_RevertEdgeSplitNotTotal() public {
+        vm.expectRevert("VyreCasino: split must total 100%");
+        casino.setEdgeSplit(7000, 2000, 2000); // sums to 11000
     }
 
     function test_SetXPRegistry() public {
@@ -826,6 +899,12 @@ contract VyreCasinoV5FeaturesTest is Test {
         // Register a mock game that will call settlePayout
         MockSettleGame settleGame = new MockSettleGame(casino);
         casino.registerGame(address(settleGame));
+
+        // Open the escrow first: settlePayout now requires a staked bet (audit H1).
+        vm.startPrank(player);
+        chip.approve(address(casino), type(uint256).max);
+        casino.play(address(settleGame), address(chip), 100e18, "");
+        vm.stopPrank();
 
         vm.expectEmit(true, true, false, true);
         emit VyreCasino.GameSettled(address(settleGame), player, address(chip), 100e18);
