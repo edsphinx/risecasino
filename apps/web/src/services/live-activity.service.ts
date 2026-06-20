@@ -42,7 +42,7 @@ function initClient() {
   try {
     wsClient = createPublicClient({
       chain: riseTestnet as any,
-      transport: webSocket(WSS_URL),
+      transport: webSocket(WSS_URL, { reconnect: { attempts: 20, delay: 1000 }, retryCount: 5 }),
     }).extend(shredActions) as any;
 
     logger.log('[LiveActivity] Shreds WebSocket client initialized');

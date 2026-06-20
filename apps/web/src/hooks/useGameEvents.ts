@@ -103,7 +103,9 @@ export function useGameEvents(
       // Create WebSocket client with Shreds extension for Rise Chain
       const client = createPublicClient({
         chain: riseTestnet as Parameters<typeof createPublicClient>[0]['chain'],
-        transport: webSocket(WSS_URL),
+        // reconnect so a dropped socket (Rise WS drops ~1006 periodically) doesn't
+        // permanently kill the instant shred-event path and fall back to polling.
+        transport: webSocket(WSS_URL, { reconnect: { attempts: 20, delay: 1000 }, retryCount: 5 }),
       }).extend(shredActions);
       clientRef.current = client;
 
