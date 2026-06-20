@@ -193,11 +193,14 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     // CASE D: Game resolved on-chain (final state) while we're in a waiting phase.
     // This happens when Stand/Double/bust resolves and WebSocket missed events.
     // Build the result from contract data so the UI can show the outcome.
+    // Fire from ANY active (non-idle, non-betting) phase: the WS result event is
+    // unreliable on Rise (the WS endpoint drops ~every 30s), so the poller MUST be
+    // able to surface the result from whatever phase we're stuck in, not just three.
     if (
       isFinalState(gameState) &&
-      (currentPhase === 'dealer_reveal' ||
-        currentPhase === 'dealer_hitting' ||
-        currentPhase === 'waiting_vrf')
+      currentPhase !== 'idle' &&
+      currentPhase !== 'betting' &&
+      !showingResult
     ) {
       logger.log(
         '[HYDRATION] Game resolved on-chain, building result. State:',
@@ -322,7 +325,7 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
     const FAST_POLLS = 8;
     const FAST_MS = 250; // was 1000
     const SLOW_MS = 600; // was 3000 — keeper resolution now caught sub-second
-    const MAX_DURATION_MS = 120_000; // 2 minutes hard cap (covers keeper fallback)
+    const MAX_DURATION_MS = 180_000; // 3 min cap — covers a slow Rise VRF + keeper fallback
 
     const isPollingPhase =
       gamePhase === 'waiting_vrf' ||
