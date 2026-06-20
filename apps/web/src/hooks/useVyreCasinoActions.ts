@@ -499,6 +499,7 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
         const data = encodeFunctionData({
           abi: VYREJACKCORE_ABI as any,
           functionName: action,
+          args: [], // hit/stand/double/surrender take no args (viem 2.37 types require this)
         });
 
         // ⚡ PHASE TRACKING: Set phase BEFORE send so events arriving during
