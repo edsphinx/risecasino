@@ -314,10 +314,15 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
   const pollStartRef = useRef(0);
 
   useEffect(() => {
-    const FAST_POLLS = 5;
-    const FAST_MS = 1000;
-    const SLOW_MS = 3000;
-    const MAX_DURATION_MS = 120_000; // 2 minutes hard cap
+    // Rise has ~10ms blocks and VRF usually responds <1s, so the poller is a
+    // FAST backstop to the instant WebSocket event — not a 1-3s drip. Tight
+    // intervals keep results sub-second even when an event is missed, and keep
+    // the keeper-fallback case (20-30s) snappy. Request rate stays bounded
+    // (~4/s fast, ~1.7/s slow) — well under the runaway cap added in c77ae17.
+    const FAST_POLLS = 8;
+    const FAST_MS = 250; // was 1000
+    const SLOW_MS = 600; // was 3000 — keeper resolution now caught sub-second
+    const MAX_DURATION_MS = 120_000; // 2 minutes hard cap (covers keeper fallback)
 
     const isPollingPhase =
       gamePhase === 'waiting_vrf' ||
@@ -372,8 +377,9 @@ export function useGameState(player: `0x${string}` | null): UseGameStateCasinoRe
       timerId = setTimeout(schedulePoll, nextDelay);
     };
 
-    // Start first poll after initial delay
-    const firstDelay = pollCountRef.current < FAST_POLLS ? FAST_MS : SLOW_MS;
+    // Start the first poll almost immediately so a missed WebSocket event costs
+    // ~200ms, not a full second.
+    const firstDelay = 200;
     timerId = setTimeout(schedulePoll, firstDelay);
 
     return () => {

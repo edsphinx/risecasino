@@ -68,11 +68,14 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
   const clearError = useCallback(() => setError(null), []);
 
   /**
-   * Wait for transaction status with polling
-   * ⚡ OPTIMIZED: Reduced from 30 to 10 attempts (2s vs 6s max)
-   *    WebSocket events now handle real-time confirmation
+   * Wait for transaction status with polling.
+   * ⚡ The RESULT is driven by the instant shred-sourced WebSocket event
+   * (GamePlayed/GameResolved), not by this loop — Rise's gasless relay has no
+   * sync/await-receipt mode, so this is only a bounded safety check that returns
+   * the moment a receipt appears (usually attempt 1 on Rise). Kept short so a
+   * lagging relay can't stall the action; failures still surface here.
    */
-  const waitForTransactionStatus = async (provider: any, callId: string, maxAttempts = 10) => {
+  const waitForTransactionStatus = async (provider: any, callId: string, maxAttempts = 6) => {
     logger.log(`[VyreCasino] Polling transaction status for: ${callId}`);
 
     for (let i = 0; i < maxAttempts; i++) {
@@ -171,10 +174,12 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
       const store = useSessionStore.getState();
       let sessionKey = store.sessionKey;
 
-      // If no valid session key, create one
+      // If no valid session key, create one. Always request the broad 'ALL'
+      // context so a single grant covers every token/call — createSessionKey is
+      // idempotent and reuses an existing 'ALL' key, so this never re-prompts.
       if (!sessionKey || !store.isValid()) {
         try {
-          sessionKey = await store.createSessionKey(address, tokenContext);
+          sessionKey = await store.createSessionKey(address, 'ALL');
           if (!sessionKey) {
             throw new Error('Failed to create session key');
           }
@@ -251,9 +256,10 @@ export function useVyreCasinoActions(config: VyreCasinoActionsConfig): UseVyreCa
 
           const txHash = await waitForTransactionStatus(provider, callId);
 
-          // Add small delay after success to let relay update nonce
-          await new Promise((r) => setTimeout(r, 1000));
-
+          // NOTE: removed a fixed 1s post-send sleep here — it was paid on EVERY
+          // action and was the biggest contributor to per-play latency. Nonce
+          // sequencing is handled by the duplicate/nonce retry below + Rise's fast
+          // inclusion; no fixed wait is needed.
           return txHash;
         } catch (err) {
           const errMsg = String(err);

@@ -133,7 +133,7 @@ export const useSessionStore = create<SessionStore>()(
         );
       },
 
-      createSessionKey: async (walletAddress, tokenContext = 'USDC') => {
+      createSessionKey: async (walletAddress, tokenContext = 'ALL') => {
         if (!walletAddress) {
           set({ error: 'Wallet address required' });
           return null;
@@ -143,6 +143,20 @@ export const useSessionStore = create<SessionStore>()(
         if (!provider) {
           set({ error: 'Wallet provider not available' });
           return null;
+        }
+
+        // Idempotent: if a valid key for THIS wallet already covers the requested
+        // context, reuse it and DO NOT re-prompt. An 'ALL' key covers every context,
+        // so the single grant taken at connect is never requested again (any token
+        // tab, re-entering the game, etc.). This is the fix for the double-permission
+        // prompt — the grant is destructive below, so we must short-circuit first.
+        const current = get().sessionKey;
+        if (current && get().isValid() && current.address === walletAddress) {
+          const covers = current.context === 'ALL' || current.context === tokenContext;
+          if (covers) {
+            logger.log('[SessionStore] Reusing existing session key — no re-grant');
+            return current;
+          }
         }
 
         set({ isCreating: true, error: null });
