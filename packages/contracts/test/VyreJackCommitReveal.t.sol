@@ -135,6 +135,9 @@ contract VyreJackCommitRevealTest is Test {
     event FallbackCommit(address indexed player, bytes32 indexed commitment, uint256 blockNumber);
     event FallbackReveal(address indexed player, uint256 randomness, string reason);
     event RandomnessSourceUsed(address indexed player, bool isVRF, string source);
+    event VRFRequested(
+        address indexed player, uint256 requestId, VyreJackCore.RequestType requestType
+    );
 
     function setUp() public {
         // Deploy VRF mock
@@ -191,7 +194,7 @@ contract VyreJackCommitRevealTest is Test {
         assertEq(uint8(state), uint8(VyreJackCore.GameState.WaitingForDeal));
 
         // Simulate VRF timeout (advance time past VRF_TIMEOUT)
-        vm.warp(block.timestamp + 16); // VRF_TIMEOUT is 15
+        vm.warp(block.timestamp + 16); // comfortably past VRF_TIMEOUT (3s)
 
         // Keeper commits
         bytes32 secret = keccak256("test_secret");
@@ -208,6 +211,96 @@ contract VyreJackCommitRevealTest is Test {
         assertEq(storedCommit, commitment);
         assertEq(commitBlock, block.number);
         assertTrue(pending);
+    }
+
+    /// @notice Regression: the keeper MUST be able to commit fallback randomness for the
+    ///         dealer's draw. A hand where the dealer must hit (total < 17) parks the game
+    ///         in DealerTurn waiting on VRF; if fallbackCommit rejects DealerTurn the hand
+    ///         can never resolve on a chain without a live VRF (it only refunds on timeout).
+    function test_FallbackCommit_AllowedInDealerTurn() public {
+        casino.playGame(player1, chipToken, 100e18);
+
+        // Deterministic deal: player 20 (two 10s, pat & not blackjack), dealer 12 (two 6s).
+        uint256[] memory deal = new uint256[](4);
+        deal[0] = 9; // player card1 -> value 10
+        deal[1] = 5; // dealer card1 -> value 6
+        deal[2] = 9; // player card2 -> value 10  => player total 20
+        deal[3] = 5; // dealer card2 -> value 6   => dealer total 12 (< 17, must hit)
+        vrf.fulfill(1, deal);
+
+        // Player stands -> dealer must draw -> game parks in DealerTurn awaiting VRF.
+        vm.prank(player1);
+        game.stand();
+        (,,,, VyreJackCore.GameState state) = game.getGame(player1);
+        assertEq(uint8(state), uint8(VyreJackCore.GameState.DealerTurn));
+
+        // VRF times out; keeper steps in. This commit must be accepted.
+        vm.warp(block.timestamp + 16);
+        bytes32 secret = keccak256("dealer_secret");
+        bytes32 commitment = keccak256(abi.encodePacked(secret));
+
+        vm.prank(keeper);
+        game.fallbackCommit(player1, commitment);
+
+        (bytes32 storedCommit,, bool pending) = game.commitRequests(player1);
+        assertEq(storedCommit, commitment);
+        assertTrue(pending);
+    }
+
+    /// @notice The dealer's draw must announce itself like PlayerHit/PlayerDouble do, so the
+    ///         keeper's event-based discovery finds it directly instead of relying on a prior
+    ///         action's event still sitting in the scan window.
+    function test_DealerDraw_EmitsVRFRequested() public {
+        casino.playGame(player1, chipToken, 100e18);
+        uint256[] memory deal = new uint256[](4);
+        deal[0] = 9; // player 10
+        deal[1] = 5; // dealer 6
+        deal[2] = 9; // player 20
+        deal[3] = 5; // dealer 12 -> must draw
+        vrf.fulfill(1, deal);
+
+        // Only assert the indexed player + event topic; requestId value is incidental.
+        vm.expectEmit(true, false, false, false);
+        emit VRFRequested(player1, 0, VyreJackCore.RequestType.DealerDraw);
+
+        vm.prank(player1);
+        game.stand();
+    }
+
+    /// @notice The keeper's commit+reveal MUST actually resolve a dealer draw, not just be
+    ///         accepted. fallbackReveal has to draw the dealer's card for DealerTurn exactly
+    ///         like the VRF path does; otherwise the reveal is a no-op and the hand spins.
+    function test_FallbackReveal_ResolvesDealerDraw() public {
+        casino.playGame(player1, chipToken, 100e18);
+
+        // Player 20 (two 10s); dealer 16 (10 + 6) -> dealer must draw exactly one card, and
+        // from 16 any card pushes the dealer to >=17 or a bust, so the hand resolves in one draw.
+        uint256[] memory deal = new uint256[](4);
+        deal[0] = 9; // player 10
+        deal[1] = 9; // dealer 10
+        deal[2] = 9; // player 20
+        deal[3] = 5; // dealer 16
+        vrf.fulfill(1, deal);
+
+        vm.prank(player1);
+        game.stand();
+        (,,,, VyreJackCore.GameState midState) = game.getGame(player1);
+        assertEq(uint8(midState), uint8(VyreJackCore.GameState.DealerTurn));
+
+        // Keeper resolves the dealer draw via commit-reveal.
+        vm.warp(block.timestamp + 16);
+        bytes32 secret = keccak256("dealer_secret");
+        vm.prank(keeper);
+        game.fallbackCommit(player1, keccak256(abi.encodePacked(secret)));
+        vm.roll(block.number + 2); // reveal must be a later block than the commit
+        vm.prank(keeper);
+        game.fallbackReveal(player1, secret);
+
+        // The dealer drew its card and the hand resolved: it must no longer sit in DealerTurn.
+        (,,,, VyreJackCore.GameState endState) = game.getGame(player1);
+        assertTrue(
+            endState != VyreJackCore.GameState.DealerTurn, "dealer turn not resolved by fallback"
+        );
     }
 
     function test_RevertFallbackCommit_NotKeeper() public {

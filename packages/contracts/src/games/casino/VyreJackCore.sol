@@ -133,8 +133,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
     /// @notice Authorized keeper for fallback randomness (SAFE multisig or EOA)
     address public keeper;
 
-    /// @notice VRF timeout threshold in seconds (after this, fallback is allowed)
-    uint256 public constant VRF_TIMEOUT = 15;
+    /// @notice VRF timeout threshold in seconds (after this, fallback is allowed). Tuned to
+    ///         3s for the Rise testnet beta, where the native VRF is unreliable and the keeper
+    ///         is the effective randomness source — a long grace is pure dead time per card.
+    ///         Raise back to ~15s for any deployment with a dependable native VRF.
+    uint256 public constant VRF_TIMEOUT = 3;
 
     /// @notice After a game has been stuck waiting on VRF this long, the player can
     ///         self-refund without an admin. Far beyond the keeper's normal fallback
@@ -674,6 +677,11 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
                 fulfilled: false,
                 timestamp: block.timestamp
             });
+
+            // Announce the dealer draw so the keeper's event discovery finds it directly,
+            // mirroring PlayerHit/PlayerDouble. Without this the dealer draw is invisible to
+            // log scanning and only resolvable via a prior action's lingering event.
+            emit VRFRequested(player, requestId, RequestType.DealerDraw);
         } else {
             _resolveGame(player);
         }
@@ -964,10 +972,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
         Game storage game = games[player];
         GameState state = game.state;
 
-        // Only allow fallback for waiting states
+        // Only allow fallback for states blocked on a VRF result. DealerTurn is included:
+        // when the dealer must draw (total < 17) the game parks here awaiting VRF, and on a
+        // chain without a live VRF only the keeper's fallback can resolve it. IsWaiting and
+        // claimTimeoutRefund already cover DealerTurn — this closes the matching gap here.
         require(
             state == GameState.WaitingForDeal || state == GameState.WaitingForHit
-                || state == GameState.WaitingForDouble,
+                || state == GameState.WaitingForDouble || state == GameState.DealerTurn,
             "VyreJackCore: game not waiting"
         );
 
@@ -1052,6 +1063,13 @@ contract VyreJackCore is IVyreGame, IVRFConsumer, Initializable, UUPSUpgradeable
             uint256[] memory randomNumbers = new uint256[](1);
             randomNumbers[0] = randomness;
             _handlePlayerDouble(player, randomNumbers);
+        } else if (state == GameState.DealerTurn) {
+            // Draw the dealer's next card, mirroring the VRF DealerDraw path. Without this
+            // branch the reveal is a no-op and the dealer turn can only be resolved by the
+            // native VRF — so on a chain where VRF is unreliable the hand spins until refund.
+            uint256[] memory randomNumbers = new uint256[](1);
+            randomNumbers[0] = randomness;
+            _handleDealerDraw(player, randomNumbers);
         }
     }
 
